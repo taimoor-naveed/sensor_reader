@@ -71,6 +71,14 @@ class Store:
             for r in cur.fetchall()
         ]
 
+    def add_history(self, hour_ts, min_temp, max_temp, min_hum, max_hum) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO history (hour_ts, min_temp, max_temp, min_hum, max_hum) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (hour_ts, min_temp, max_temp, min_hum, max_hum),
+        )
+        self.conn.commit()
+
     def fillable_gaps(self, start: int, end: int) -> list[int]:
         first_hour = start - (start % 3600)
         gaps = []
