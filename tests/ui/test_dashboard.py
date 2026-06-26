@@ -96,7 +96,7 @@ def test_no_gap_banner_hidden_when_no_gaps(pw):
     with LiveServer(build_app("normal")) as srv:
         page = _desktop_page(browser)
         page.goto(srv.url, wait_until="networkidle")
-        page.wait_for_timeout(600)
+        page.wait_for_function("window._gaps === null")
         assert page.is_hidden("#gapWrap")
         page.close()
 
