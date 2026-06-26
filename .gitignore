@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# UI test screenshots
+tests/ui/screenshots/*.png
