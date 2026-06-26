@@ -117,3 +117,27 @@ def comfort_band(temp_c: float, rh: float) -> str:
     if rh > 60.0:
         return "humid"
     return "comfortable"
+
+
+@dataclass
+class HistoryRecord:
+    index: int
+    ts_offset: int
+    min_temp: float
+    max_temp: float
+    min_hum: int
+    max_hum: int
+
+
+def parse_history_record(data: bytes) -> HistoryRecord:
+    index, ts_offset, max_t, max_h, min_t, min_h = struct.unpack("<IIhBhB", data)
+    return HistoryRecord(
+        index=index, ts_offset=ts_offset,
+        min_temp=min_t / 10, max_temp=max_t / 10,
+        min_hum=min_h, max_hum=max_h,
+    )
+
+
+def parse_device_time(data: bytes) -> tuple[int, int]:
+    epoch, tz = struct.unpack("<Ib", data[:5])
+    return epoch, tz

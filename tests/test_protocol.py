@@ -1,4 +1,5 @@
-from lywsd03mmc_monitor.protocol import parse_advertisement, decrypt_payload, Reading, dew_point, absolute_humidity, comfort_band
+from lywsd03mmc_monitor.protocol import parse_advertisement, decrypt_payload, Reading, dew_point, absolute_humidity, comfort_band, parse_history_record, parse_device_time
+import struct
 
 
 def test_parse_plaintext_temp_humidity():
@@ -55,3 +56,21 @@ def test_comfort_band():
     assert comfort_band(30.0, 45.0) == "hot"
     assert comfort_band(22.0, 20.0) == "dry"
     assert comfort_band(22.0, 70.0) == "humid"
+
+
+def test_parse_history_record():
+    raw = struct.pack("<IIhBhB", 7, 3600, 215, 55, 188, 47)
+    rec = parse_history_record(raw)
+    assert rec.index == 7
+    assert rec.ts_offset == 3600
+    assert rec.max_temp == 21.5
+    assert rec.max_hum == 55
+    assert rec.min_temp == 18.8
+    assert rec.min_hum == 47
+
+
+def test_parse_device_time():
+    raw = struct.pack("<Ib", 1_700_000_000, 2)
+    epoch, tz = parse_device_time(raw)
+    assert epoch == 1_700_000_000
+    assert tz == 2
