@@ -1,0 +1,12 @@
+[sensor]
+# On macOS, `address` is the CoreBluetooth UUID, not a MAC. It is OPTIONAL:
+# with a single sensor the scanner matches by service UUID + product id + decrypt success.
+address = ""
+bindkey = "00112233445566778899aabbccddeeff"  # 32 hex chars
+
+[app]
+host = "127.0.0.1"
+port = 8787
+offline_after_seconds = 150
+battery_warn_below = 15
+db_path = "sensor.db"
