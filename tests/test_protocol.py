@@ -74,3 +74,11 @@ def test_parse_device_time():
     epoch, tz = parse_device_time(raw)
     assert epoch == 1_700_000_000
     assert tz == 2
+
+
+def test_parse_device_time_four_bytes_no_tz():
+    # LYWSD03MMC factory firmware returns only a 4-byte uint32 uptime (no tz byte).
+    # Real captured value: 64fc0200 = 195684 seconds of uptime.
+    epoch, tz = parse_device_time(bytes.fromhex("64fc0200"))
+    assert epoch == 195684
+    assert tz == 0

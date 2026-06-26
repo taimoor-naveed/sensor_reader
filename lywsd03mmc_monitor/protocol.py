@@ -139,5 +139,9 @@ def parse_history_record(data: bytes) -> HistoryRecord:
 
 
 def parse_device_time(data: bytes) -> tuple[int, int]:
-    epoch, tz = struct.unpack("<Ib", data[:5])
+    # The device clock is a uint32 (seconds since boot). Some firmwares append a
+    # signed tz-offset byte (5 bytes total); the LYWSD03MMC factory firmware
+    # returns only the 4-byte uint32. Tolerate both.
+    epoch = struct.unpack("<I", data[:4])[0]
+    tz = struct.unpack("b", data[4:5])[0] if len(data) >= 5 else 0
     return epoch, tz
