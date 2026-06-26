@@ -39,7 +39,7 @@
   .chartcard{margin-bottom:18px}
   .chartbox{position:relative;height:clamp(200px,38vw,280px);margin-top:8px}
   canvas{width:100%!important}
-  .pill{font-size:13px;min-height:40px;padding:8px 16px;border-radius:999px;background:#ffffff12;
+  .pill{font-size:13px;min-height:44px;padding:8px 16px;border-radius:999px;background:#ffffff12;
         color:var(--muted);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   @media (max-width:600px){
     .grid{grid-template-columns:1fr 1fr;gap:12px}
@@ -91,7 +91,7 @@ const $ = id => document.getElementById(id);
 let range = "day", tempChart, humChart;
 
 function gradient(ctx, color){
-  const g = ctx.createLinearGradient(0,0,0,260);
+  const g = ctx.createLinearGradient(0,0,0,ctx.canvas.height||260);
   g.addColorStop(0, color+"66"); g.addColorStop(1, color+"00"); return g;
 }
 function mkChart(canvas, color){
@@ -127,6 +127,8 @@ async function refreshCurrent(){
 
 async function refreshHistory(){
   const r = await (await fetch("/api/history?range="+range)).json();
+  r.points = r.points ?? [];
+  r.bands = r.bands ?? [];
   const tPts = r.points.map(p => ({x:p.ts*1000, y:p.temperature}));
   const hPts = r.points.map(p => ({x:p.ts*1000, y:p.humidity}));
   // For week view, draw band midpoints as the line so device + live bands render uniformly.
