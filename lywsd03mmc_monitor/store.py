@@ -46,6 +46,31 @@ class Store:
             for r in cur.fetchall()
         ]
 
+    def hourly_rollup(self, start: int, end: int) -> list[dict]:
+        cur = self.conn.execute(
+            "SELECT (ts/3600)*3600 AS hour, MIN(temperature), MAX(temperature), "
+            "MIN(humidity), MAX(humidity) FROM readings "
+            "WHERE ts >= ? AND ts <= ? GROUP BY hour ORDER BY hour",
+            (start, end),
+        )
+        return [
+            {"hour_ts": r[0], "min_temp": r[1], "max_temp": r[2],
+             "min_hum": r[3], "max_hum": r[4], "source": "live"}
+            for r in cur.fetchall()
+        ]
+
+    def history_between(self, start: int, end: int) -> list[dict]:
+        cur = self.conn.execute(
+            "SELECT hour_ts, min_temp, max_temp, min_hum, max_hum FROM history "
+            "WHERE hour_ts >= ? AND hour_ts <= ? ORDER BY hour_ts",
+            (start, end),
+        )
+        return [
+            {"hour_ts": r[0], "min_temp": r[1], "max_temp": r[2],
+             "min_hum": r[3], "max_hum": r[4], "source": "device"}
+            for r in cur.fetchall()
+        ]
+
     def fillable_gaps(self, start: int, end: int) -> list[int]:
         first_hour = start - (start % 3600)
         gaps = []
