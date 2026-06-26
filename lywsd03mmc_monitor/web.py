@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 _STATIC = Path(__file__).parent / "static"
 _RANGES = {"hour": 3600, "day": 86400, "week": 604800}
@@ -9,6 +10,9 @@ _RANGES = {"hour": 3600, "day": 86400, "week": 604800}
 
 def create_app(store, state, now_fn, backfill_fn=None) -> FastAPI:
     app = FastAPI()
+
+    # Serve vendor JS (Chart.js) and other static assets
+    app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
 
     @app.get("/")
     def index():

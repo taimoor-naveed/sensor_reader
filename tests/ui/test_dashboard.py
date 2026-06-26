@@ -1,0 +1,131 @@
+from pathlib import Path
+
+import pytest
+from playwright.sync_api import sync_playwright
+
+from harness import build_app, LiveServer
+
+SHOTS = Path(__file__).parent / "screenshots"
+SHOTS.mkdir(exist_ok=True)
+
+
+@pytest.fixture(scope="module")
+def pw():
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        yield p, browser
+        browser.close()
+
+
+def _desktop_page(browser):
+    return browser.new_page(viewport={"width": 1280, "height": 900})
+
+
+def test_desktop_renders_and_screenshot(pw):
+    p, browser = pw
+    with LiveServer(build_app("normal")) as srv:
+        page = _desktop_page(browser)
+        page.goto(srv.url, wait_until="networkidle")
+        page.wait_for_selector("#temp")
+        assert page.inner_text("#temp") not in ("--", "")
+        page.screenshot(path=str(SHOTS / "desktop.png"), full_page=True)
+        page.close()
+
+
+def test_mobile_renders_no_horizontal_overflow(pw):
+    p, browser = pw
+    iphone = p.devices["iPhone 13"]            # mobile viewport + has_touch
+    with LiveServer(build_app("normal")) as srv:
+        ctx = browser.new_context(**iphone)
+        page = ctx.new_page()
+        page.goto(srv.url, wait_until="networkidle")
+        page.wait_for_selector("#temp")
+        no_overflow = page.evaluate(
+            "document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
+        assert no_overflow, "dashboard overflows horizontally on mobile"
+        page.screenshot(path=str(SHOTS / "mobile.png"), full_page=True)
+        ctx.close()
+
+
+def test_range_toggle_moves_active_class(pw):
+    p, browser = pw
+    with LiveServer(build_app("normal")) as srv:
+        page = _desktop_page(browser)
+        page.goto(srv.url, wait_until="networkidle")
+        for r in ["hour", "day", "week"]:
+            page.click(f'button[data-r="{r}"]')
+            assert "active" in page.get_attribute(f'button[data-r="{r}"]', "class")
+        page.close()
+
+
+def test_empty_scenario_no_js_errors(pw):
+    p, browser = pw
+    with LiveServer(build_app("empty")) as srv:
+        errors = []
+        page = _desktop_page(browser)
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(srv.url, wait_until="networkidle")
+        page.click('button[data-r="week"]')
+        page.wait_for_timeout(500)
+        assert page.inner_text("#temp") == "--"
+        assert errors == [], f"JS errors on empty data: {errors}"
+        page.close()
+
+
+def test_low_battery_badge_shows(pw):
+    p, browser = pw
+    with LiveServer(build_app("low_battery")) as srv:
+        page = _desktop_page(browser)
+        page.goto(srv.url, wait_until="networkidle")
+        page.wait_for_selector("text=Low battery")
+        page.close()
+
+
+def test_offline_state_shows(pw):
+    p, browser = pw
+    with LiveServer(build_app("offline")) as srv:
+        page = _desktop_page(browser)
+        page.goto(srv.url, wait_until="networkidle")
+        page.wait_for_function("document.querySelector('#online').textContent === 'Offline'")
+        assert "off" in page.get_attribute("#dot", "class")
+        page.close()
+
+
+def test_no_gap_banner_hidden_when_no_gaps(pw):
+    p, browser = pw
+    with LiveServer(build_app("normal")) as srv:
+        page = _desktop_page(browser)
+        page.goto(srv.url, wait_until="networkidle")
+        page.wait_for_timeout(600)
+        assert page.is_hidden("#gapWrap")
+        page.close()
+
+
+def test_gap_fill_touch_flow(pw):
+    p, browser = pw
+    iphone = p.devices["iPhone 13"]
+    with LiveServer(build_app("with_gaps")) as srv:
+        ctx = browser.new_context(**iphone)
+        page = ctx.new_page()
+        page.goto(srv.url, wait_until="networkidle")
+        page.wait_for_selector("#gapWrap", state="visible")
+        assert "missing" in page.inner_text("#gapText")
+        page.tap("#fillBtn")                     # touch, not click
+        page.wait_for_selector("#gapWrap", state="hidden", timeout=8000)
+        ctx.close()
+
+
+def test_backfill_failure_reenables_button(pw):
+    p, browser = pw
+    with LiveServer(build_app("with_gaps")) as srv:
+        page = _desktop_page(browser)
+        page.route("**/api/backfill",
+                   lambda route: route.fulfill(status=503, content_type="application/json", body="{}"))
+        page.goto(srv.url, wait_until="networkidle")
+        page.wait_for_selector("#fillBtn")
+        page.click("#fillBtn")
+        page.wait_for_function(
+            "document.querySelector('#fillBtn') && document.querySelector('#fillBtn').disabled === false",
+            timeout=8000)
+        assert page.inner_text("#fillBtn") == "Fill from sensor"
+        page.close()
