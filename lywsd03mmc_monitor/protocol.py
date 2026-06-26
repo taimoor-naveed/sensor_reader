@@ -1,6 +1,8 @@
 import struct
 from dataclasses import dataclass
 
+from cryptography.hazmat.primitives.ciphers.aead import AESCCM
+
 SERVICE_UUID = "0000fe95-0000-1000-8000-00805f9b34fb"
 PRODUCT_ID = 0x055B
 
@@ -55,7 +57,15 @@ def parse_advertisement(service_data: bytes, bindkey: bytes) -> Reading | None:
 
 
 def decrypt_payload(data: bytes, mac: bytes, bindkey: bytes, payload_start: int) -> bytes | None:
-    return None  # implemented in Task 3
+    if len(data) < payload_start + 7:
+        return None
+    nonce = bytes(mac) + data[2:5] + data[-7:-4]
+    mic = data[-4:]
+    ciphertext = data[payload_start:-7]
+    try:
+        return AESCCM(bindkey, tag_length=4).decrypt(nonce, ciphertext + mic, b"\x11")
+    except Exception:
+        return None
 
 
 def _parse_payload(payload: bytes) -> Reading:
