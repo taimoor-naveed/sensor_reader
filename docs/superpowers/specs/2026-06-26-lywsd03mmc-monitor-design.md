@@ -39,7 +39,23 @@ protocol from scratch in a single focused, cross-platform codebase.
 - **SQLite** (stdlib `sqlite3`, WAL mode) — logged history
 - **Frontend:** a single static HTML page with vanilla JS and a charting library **vendored
   locally** (no CDN, works offline). Modern, polished visual design with smooth/animated
-  "flowing" line charts is an explicit requirement.
+  "flowing" line charts is an explicit requirement. Must be **responsive (desktop + mobile)
+  with touch support** — touch-sized targets, `tap` interactions, no hover-only controls.
+- **Playwright (Chromium)** — automated UI testing: real-browser full-page screenshots at
+  desktop and mobile viewports plus interaction/touch tests against the app seeded with mock
+  data. No manual UI testing.
+
+## Deployment & runtime
+
+- **Runs natively, not in Docker.** BLE cannot be reached from a container on either target
+  platform: Docker Desktop on macOS and Windows runs Linux containers inside a VM with no access
+  to the host Bluetooth radio (no CoreBluetooth/WinRT passthrough). Docker BLE only works on a
+  native Linux host with `--privileged`, `--net=host`, and the host D-Bus/`bluetoothd` shared in —
+  which neither target machine is. The app therefore runs as a native process.
+- **One setup for dev and prod** — the same `pip install -r requirements.txt` + `python -m
+  lywsd03mmc_monitor` on macOS (dev) and Windows (prod). No separate configurations.
+- **Default port 8787** (configurable in `config.toml`), chosen to avoid an existing web server on
+  the Windows machine.
 
 ## Architecture
 
@@ -192,7 +208,14 @@ the gap window. Connecting briefly interrupts advertising and uses battery, so i
 - `protocol.py` — unit tests against the known vectors (e.g. plaintext `50 30 5b 05 03 …` decodes
   to 27.2 °C / 49 %; an encrypted vector decrypts with its bindkey). No hardware needed.
 - `store.py` — gap detection, minute dedupe, range queries with synthetic data.
-- `scanner.py` / `gatt.py` — kept thin; manual integration test with the real sensor.
+- `state.py`, `config.py`, and the pure helpers in `scanner.py`/`gatt.py` (`handle_detection`,
+  `records_to_rows`) — unit-tested with fakes; no hardware.
+- **UI** — Playwright drives the real rendered site (seeded with mock data) at desktop and mobile
+  (touch) viewports. Saves full-page screenshots for visual review and exercises every interactive
+  element with edge cases: range toggle (incl. empty data), low-battery badge, online/offline
+  state, gap banner + Fill button (no-gaps, success, failure). No manual UI testing.
+- **Hardware** — the live BLE read against the real sensor is validated by running the app on the
+  dev Mac (which has Bluetooth) during the build, not by the user.
 
 ## Build order
 
