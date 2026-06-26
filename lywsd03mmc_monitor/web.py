@@ -33,6 +33,23 @@ def create_app(store, state, now_fn, backfill_fn=None) -> FastAPI:
         return {"range": range, "points": points, "bands": bands}
 
     # Phase 2 endpoints registered here by Tasks 13-14 (gaps, backfill).
+    from fastapi import Body, HTTPException
+
+    @app.get("/api/gaps")
+    def gaps(range: str = "week"):
+        span = _RANGES.get(range, 604800)
+        now = int(now_fn())
+        return {"gaps": store.fillable_gaps(now - span, now)}
+
+    @app.post("/api/backfill")
+    async def do_backfill(payload: dict = Body(...)):
+        if backfill_fn is None:
+            raise HTTPException(status_code=503, detail="backfill unavailable")
+        result = backfill_fn(int(payload["from"]), int(payload["to"]))
+        if hasattr(result, "__await__"):
+            result = await result
+        return {"filled": int(result)}
+
     app.state.store = store
     app.state.live = state
     app.state.now_fn = now_fn
