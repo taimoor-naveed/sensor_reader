@@ -45,3 +45,20 @@ class Store:
              "battery": r[3], "rssi": r[4]}
             for r in cur.fetchall()
         ]
+
+    def fillable_gaps(self, start: int, end: int) -> list[int]:
+        first_hour = start - (start % 3600)
+        gaps = []
+        h = first_hour
+        while h < end:
+            has_reading = self.conn.execute(
+                "SELECT 1 FROM readings WHERE ts >= ? AND ts < ? LIMIT 1",
+                (h, h + 3600),
+            ).fetchone()
+            has_history = self.conn.execute(
+                "SELECT 1 FROM history WHERE hour_ts = ? LIMIT 1", (h,)
+            ).fetchone()
+            if not has_reading and not has_history:
+                gaps.append(h)
+            h += 3600
+        return gaps
