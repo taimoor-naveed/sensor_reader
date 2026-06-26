@@ -155,22 +155,25 @@ async function refreshHistory(){
 }
 
 async function refreshGaps(){
-  const r = await (await fetch("/api/gaps?range=week")).json();
-  const gaps = r.gaps || [];
-  if(!gaps.length){ $("gapWrap").style.display = "none"; window._gaps = null; return; }
-  $("gapWrap").style.display = "block";
-  $("gapText").textContent = gaps.length + " missing hour(s) in the last week";
-  window._gaps = gaps;
+  try{
+    const r = await (await fetch("/api/gaps?range=week")).json();
+    const gaps = r.gaps || [];
+    if(!gaps.length){ $("gapWrap").style.display = "none"; window._gaps = null; return; }
+    $("gapWrap").style.display = "block";
+    $("gapText").textContent = gaps.length + " missing hour(s) in the last week";
+    window._gaps = gaps;
+  }catch(e){ /* transient network error; leave banner as-is */ }
 }
 
 async function doFill(){
   const g = window._gaps; if(!g || !g.length) return;
   $("fillBtn").textContent = "Connecting…"; $("fillBtn").disabled = true;
   try{
-    await fetch("/api/backfill", {method:"POST", headers:{"Content-Type":"application/json"},
+    const resp = await fetch("/api/backfill", {method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({from: g[0], to: g[g.length-1] + 3600})});
+    if(!resp.ok) throw new Error("HTTP " + resp.status);
     await refreshGaps(); await refreshHistory();
-  }catch(e){ /* best-effort */ }
+  }catch(e){ $("gapText").textContent = "Backfill failed — try again"; }
   $("fillBtn").textContent = "Fill from sensor"; $("fillBtn").disabled = false;
 }
 
