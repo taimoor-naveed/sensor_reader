@@ -76,6 +76,13 @@
     </div>
   </div>
 
+  <div class="charts" id="gapWrap" style="display:none">
+    <div class="card" style="border:1px solid #ffb45455;background:#ffb45412">
+      <span id="gapText" class="label" style="color:var(--warn)"></span>
+      <button id="fillBtn" class="pill" style="cursor:pointer;margin-left:14px;border:none">Fill from sensor</button>
+    </div>
+  </div>
+
   <div class="charts">
     <div class="toolbar" id="ranges">
       <button data-r="hour">Hour</button>
@@ -131,16 +138,40 @@ async function refreshHistory(){
   r.bands = r.bands ?? [];
   const tPts = r.points.map(p => ({x:p.ts*1000, y:p.temperature}));
   const hPts = r.points.map(p => ({x:p.ts*1000, y:p.humidity}));
-  // For week view, draw band midpoints as the line so device + live bands render uniformly.
   if(r.points.length === 0 && r.bands.length){
+    const tBand=[], hBand=[];
     for(const b of r.bands){
-      tPts.push({x:b.hour_ts*1000, y:(b.min_temp+b.max_temp)/2});
-      hPts.push({x:b.hour_ts*1000, y:(b.min_hum+b.max_hum)/2});
+      tBand.push({x:b.hour_ts*1000, y:(b.min_temp+b.max_temp)/2});
+      hBand.push({x:b.hour_ts*1000, y:(b.min_hum+b.max_hum)/2});
     }
-    tPts.sort((a,b)=>a.x-b.x); hPts.sort((a,b)=>a.x-b.x);
+    tBand.sort((a,b)=>a.x-b.x); hBand.sort((a,b)=>a.x-b.x);
+    tempChart.data.datasets[0].data = tBand;
+    humChart.data.datasets[0].data  = hBand;
+    tempChart.update(); humChart.update();
+    return;
   }
   tempChart.data.datasets[0].data = tPts; tempChart.update();
   humChart.data.datasets[0].data  = hPts; humChart.update();
+}
+
+async function refreshGaps(){
+  const r = await (await fetch("/api/gaps?range=week")).json();
+  const gaps = r.gaps || [];
+  if(!gaps.length){ $("gapWrap").style.display = "none"; window._gaps = null; return; }
+  $("gapWrap").style.display = "block";
+  $("gapText").textContent = gaps.length + " missing hour(s) in the last week";
+  window._gaps = gaps;
+}
+
+async function doFill(){
+  const g = window._gaps; if(!g || !g.length) return;
+  $("fillBtn").textContent = "Connecting…"; $("fillBtn").disabled = true;
+  try{
+    await fetch("/api/backfill", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({from: g[0], to: g[g.length-1] + 3600})});
+    await refreshGaps(); await refreshHistory();
+  }catch(e){ /* best-effort */ }
+  $("fillBtn").textContent = "Fill from sensor"; $("fillBtn").disabled = false;
 }
 
 $("ranges").addEventListener("click", e => {
@@ -153,6 +184,7 @@ $("ranges").addEventListener("click", e => {
 window.addEventListener("load", () => {
   tempChart = mkChart($("tempChart"), "#4cc9f0");
   humChart  = mkChart($("humChart"),  "#b5179e");
+  $("fillBtn").addEventListener("click", doFill); refreshGaps(); setInterval(refreshGaps, 60000);
   refreshCurrent(); refreshHistory();
   setInterval(refreshCurrent, 5000);
   setInterval(refreshHistory, 60000);
