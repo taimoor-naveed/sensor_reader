@@ -1,3 +1,4 @@
+import math
 import struct
 from dataclasses import dataclass
 
@@ -93,3 +94,26 @@ def _apply_object(reading: Reading, obj_type: int, value: bytes) -> None:
         reading.humidity = int(struct.unpack("<H", value)[0] / 10)
     elif obj_type == 0x100A and len(value) == 1:
         reading.battery = value[0]
+
+
+def dew_point(temp_c: float, rh: float) -> float:
+    a, b = 17.27, 237.7
+    gamma = (a * temp_c) / (b + temp_c) + math.log(rh / 100.0)
+    return (b * gamma) / (a - gamma)
+
+
+def absolute_humidity(temp_c: float, rh: float) -> float:
+    saturation = 6.112 * math.exp((17.67 * temp_c) / (temp_c + 243.5))
+    return saturation * rh * 2.1674 / (273.15 + temp_c)
+
+
+def comfort_band(temp_c: float, rh: float) -> str:
+    if temp_c < 18.0:
+        return "cold"
+    if temp_c > 27.0:
+        return "hot"
+    if rh < 30.0:
+        return "dry"
+    if rh > 60.0:
+        return "humid"
+    return "comfortable"

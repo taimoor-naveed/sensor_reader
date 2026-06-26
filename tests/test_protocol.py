@@ -1,4 +1,4 @@
-from lywsd03mmc_monitor.protocol import parse_advertisement, decrypt_payload, Reading
+from lywsd03mmc_monitor.protocol import parse_advertisement, decrypt_payload, Reading, dew_point, absolute_humidity, comfort_band
 
 
 def test_parse_plaintext_temp_humidity():
@@ -35,3 +35,23 @@ def test_decrypt_payload_known_vector():
 def test_decrypt_payload_wrong_key_returns_none():
     data = bytes.fromhex("5858e4162c84535638c1a42b6ef2e91200006c884d9e")
     assert decrypt_payload(data, data[5:11], b"\x00" * 16, 11) is None
+
+
+def test_dew_point_at_saturation_equals_temperature():
+    assert abs(dew_point(20.0, 100.0) - 20.0) < 0.1
+
+
+def test_dew_point_realistic():
+    assert abs(dew_point(27.2, 49.0) - 15.5) < 0.3
+
+
+def test_absolute_humidity_realistic():
+    assert abs(absolute_humidity(27.2, 49.0) - 12.8) < 0.3
+
+
+def test_comfort_band():
+    assert comfort_band(22.0, 45.0) == "comfortable"
+    assert comfort_band(10.0, 45.0) == "cold"
+    assert comfort_band(30.0, 45.0) == "hot"
+    assert comfort_band(22.0, 20.0) == "dry"
+    assert comfort_band(22.0, 70.0) == "humid"
