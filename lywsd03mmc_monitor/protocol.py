@@ -30,6 +30,8 @@ def parse_advertisement(service_data: bytes, bindkey: bytes) -> Reading | None:
     i = 5
     mac = None
     if mac_include:
+        if len(service_data) < 11:
+            return None
         mac = service_data[5:11]  # on-wire little-endian
         i += 6
     if cap_include:

@@ -14,3 +14,9 @@ def test_parse_rejects_wrong_product():
     # product 0x16e4 instead of 0x055B
     data = bytes.fromhex("5030e41603")
     assert parse_advertisement(data, b"\x00" * 16) is None
+
+
+def test_parse_truncated_mac_returns_none():
+    # mac_include bit set (frctrl 0x3050) but frame too short to contain the MAC
+    data = bytes.fromhex("50305b0503")
+    assert parse_advertisement(data, b"\x00" * 16) is None
