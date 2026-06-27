@@ -9,3 +9,6 @@ venv/
 
 # UI test screenshots
 tests/ui/screenshots/*.png
+
+# Brainstorming visual companion scratch
+.superpowers/
