@@ -117,9 +117,13 @@ class Store:
         gaps = self.fillable_gaps(start, end)
         if boot_epoch is None:
             return {"fillable": gaps, "unrecoverable": []}
+        # The device only logs COMPLETED hours, so its earliest record is the hour
+        # AFTER boot; the partial boot hour itself is never recoverable. Hence the
+        # boundary is strict (`>`), which avoids a perpetual off-by-one "1 fillable"
+        # hour at the oldest edge of the device's memory.
         boot_hour = boot_epoch - (boot_epoch % 3600)
-        fillable = [h for h in gaps if h >= boot_hour]
-        unrecoverable = [h for h in gaps if h < boot_hour]
+        fillable = [h for h in gaps if h > boot_hour]
+        unrecoverable = [h for h in gaps if h <= boot_hour]
         return {"fillable": fillable, "unrecoverable": unrecoverable}
 
     def today_high_low(self, start: int, end: int) -> dict:

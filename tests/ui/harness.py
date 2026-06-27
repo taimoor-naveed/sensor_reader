@@ -32,23 +32,31 @@ def build_app(scenario="normal"):
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     store = Store(path)
-    if scenario != "empty":
+    if scenario == "fresh_deploy":
+        # freshly-started deploy: ~3 days of backfilled hourly history + only a few
+        # recent live readings (drives the "merge hourly history with live" behavior).
+        for hh in range(72, 0, -1):
+            ht = NOW - hh * 3600
+            ht -= ht % 3600
+            store.add_history(ht, 20.0 + (hh % 5) * 0.4, 23.0 + (hh % 5) * 0.4, 42, 52)
+        for m in range(15, 0, -1):
+            store.add_reading(NOW - m * 60, 25.0, 46, 80, -58)
+        store.set_device_boot_epoch(NOW - 72 * 3600)
+    elif scenario != "empty":
         _seed(store)
-    if scenario == "with_gaps":
-        # remove a 5-hour block ~40h ago to create a fillable gap
-        for h in range(40, 45):
-            store.conn.execute("DELETE FROM readings WHERE ts >= ? AND ts < ?",
-                               (NOW - h * 3600, NOW - (h - 1) * 3600))
-        store.conn.commit()
+        if scenario == "with_gaps":
+            # remove a 5-hour block ~40h ago to create a fillable gap
+            for h in range(40, 45):
+                store.conn.execute("DELETE FROM readings WHERE ts >= ? AND ts < ?",
+                                   (NOW - h * 3600, NOW - (h - 1) * 3600))
+            store.conn.commit()
+        store.set_device_boot_epoch(NOW - 3 * 86400)   # ~3 days of fillable history
 
     state = LiveState(offline_after=150, battery_warn_below=15)
     if scenario != "empty":
         battery = 9 if scenario == "low_battery" else 80
         last_seen = NOW - 600 if scenario == "offline" else NOW
         state.update(Reading(temperature=21.4, humidity=46, battery=battery), -58, last_seen)
-
-    if scenario != "empty":
-        store.set_device_boot_epoch(NOW - 3 * 86400)   # ~3 days of fillable history
 
     def fake_backfill(start_ts, end_ts, progress_cb=None):
         n = 0

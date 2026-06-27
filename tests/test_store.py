@@ -51,10 +51,12 @@ def test_boot_epoch_round_trips(tmp_path):
 
 def test_classify_gaps_splits_on_boot_epoch(tmp_path):
     s = Store(str(tmp_path / "t.db"))
-    # hours 0..4 are all empty -> all gaps; boot at hour 2
+    # hours 0..4 are all empty -> all gaps; boot at hour 2 (7200). The device only
+    # logs COMPLETED hours, so its first record is the hour AFTER boot -- the partial
+    # boot hour itself is unrecoverable, and fillable starts one hour later.
     res = s.classify_gaps(0, 5 * 3600, boot_epoch=2 * 3600)
-    assert res["unrecoverable"] == [0, 3600]
-    assert res["fillable"] == [7200, 10800, 14400]
+    assert res["unrecoverable"] == [0, 3600, 7200]
+    assert res["fillable"] == [10800, 14400]
 
 
 def test_classify_gaps_none_boot_all_fillable(tmp_path):

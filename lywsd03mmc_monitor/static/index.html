@@ -71,6 +71,7 @@
        border:1px solid #ffffff10;cursor:pointer;min-height:36px;touch-action:manipulation}
   .chips button.active{background:var(--accent);color:#04222e;border-color:transparent;font-weight:600}
   .chartbox{position:relative;height:clamp(190px,32vw,230px);margin-top:6px}
+  .chartbox.tall{height:clamp(360px,58vw,480px)}
   canvas{width:100%!important}
   .spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
@@ -103,10 +104,7 @@
       <div class="label">Temperature</div>
       <div class="herobody">
         <div><span class="heronum" id="temp">--</span><span class="unit"> °C</span></div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <span class="pill" id="comfort">—</span>
-          <span class="fresh" id="tempUpdated">—</span>
-        </div>
+        <div class="fresh" id="tempUpdated">—</div>
       </div>
     </div>
 
@@ -123,13 +121,7 @@
       <div class="fresh" id="batUpdated">—</div>
     </div>
 
-    <div class="card">
-      <div class="label">Dew point</div>
-      <div class="val"><span id="dew">—</span><span class="u"> °C</span></div>
-      <div class="sub">abs. humidity <span id="abs">—</span> g/m³</div>
-    </div>
-
-    <div class="card">
+    <div class="card" style="grid-column:span 2">
       <div class="label">Today</div>
       <div class="today"><span class="hi" id="todayHigh">—</span><span class="lo" id="todayLow">—</span><span class="u" style="font-size:13px;color:var(--muted)">°C</span></div>
       <div class="sub" id="todaySub">—</div>
@@ -150,7 +142,7 @@
 
   <div class="charts">
     <div class="charthead">
-      <div class="label">Temperature</div>
+      <div class="label">Temperature &amp; Humidity</div>
       <div style="display:flex;align-items:center;gap:14px">
         <span class="hint">drag to pan · scroll / pinch to zoom</span>
         <div class="chips" id="ranges">
@@ -161,11 +153,7 @@
         </div>
       </div>
     </div>
-    <div class="card"><div class="chartbox"><canvas id="tempChart"></canvas></div></div>
-    <div class="card" style="margin-top:14px">
-      <div class="label" style="margin-bottom:6px">Humidity</div>
-      <div class="chartbox"><canvas id="humChart"></canvas></div>
-    </div>
+    <div class="card"><div class="chartbox tall"><canvas id="chart"></canvas></div></div>
   </div>
 
 </div>
@@ -173,7 +161,7 @@
 <script>
 const $ = id => document.getElementById(id);
 let lastSnap = {};
-let tempChart, humChart, win = null, extent = null, fetchTimer = null, activeToken = "24h";
+let chart = null, win = null, extent = null, fetchTimer = null, activeToken = "24h";
 const COLORS = {temp:"#9be4ff", hum:"#e879c9"};
 
 /* ---------- live values ---------- */
@@ -213,11 +201,8 @@ async function refreshCurrent(){
   setVal("temp", r.temperature, v=>v.toFixed(1));
   setVal("hum",  r.humidity,    v=>v.toFixed(0));
   setVal("bat",  r.battery,     v=>String(v));
-  setVal("dew",  r.dew_point,   v=>String(v));
-  setVal("abs",  r.absolute_humidity, v=>String(v));
   setVal("todayHigh", r.today_high, v=>"↑"+v.toFixed(1));
   setVal("todayLow",  r.today_low,  v=>"↓"+v.toFixed(1));
-  $("comfort").textContent = r.comfort ? r.comfort[0].toUpperCase()+r.comfort.slice(1) : "—";
   $("batSub").textContent  = r.battery_source === "gatt" ? "voltage-derived · via update" : "passive";
   $("liveBadge").textContent = r.online ? "Live" : "Offline";
   $("liveDot").style.background = r.online ? "var(--ok)" : "var(--muted2)";
@@ -253,56 +238,70 @@ function fmtTick(value){
   if(span <= 36*3600*1000) return d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
   return d.toLocaleDateString([], {month:"short",day:"numeric"});
 }
-function mkChart(canvas, color){
+// ONE chart, TWO stacked y-axes (temp panel on top, humidity below) sharing a single
+// x-axis. Pan/zoom is on the x-axis only, so both panels move together natively — no
+// cross-chart sync code needed (that's why we use one chart, not two).
+function mkChart(canvas){
   const ctx = canvas.getContext("2d");
+  const ds = (label, color, axis) => ({
+    label, yAxisID:axis, data:[], borderColor:color, backgroundColor:gradient(ctx,color),
+    borderWidth:2, fill:true, tension:.35, pointRadius:0, spanGaps:false,
+  });
+  const yAxis = (color, unit) => ({
+    type:"linear", position:"left", stack:"panels", stackWeight:1, offset:true,
+    grid:{color:"#ffffff10"}, ticks:{color:color}, title:{display:true, text:unit, color:"#7f90a8"},
+  });
   return new Chart(ctx, {
     type:"line",
-    data:{datasets:[{data:[], borderColor:color, backgroundColor:gradient(ctx,color),
-      borderWidth:2, fill:true, tension:.35, pointRadius:0, spanGaps:false}]},
+    data:{datasets:[ ds("Temperature °C", COLORS.temp, "yTemp"),
+                     ds("Humidity %",     COLORS.hum,  "yHum") ]},
     options:{responsive:true, maintainAspectRatio:false, animation:false,
-      plugins:{legend:{display:false},
+      interaction:{mode:"nearest", axis:"x", intersect:false},
+      plugins:{
+        legend:{display:true, position:"top",
+                labels:{color:"#9fb0c4", usePointStyle:true, boxWidth:8, boxHeight:8, padding:14}},
         zoom:{ pan:{enabled:true, mode:"x", onPanComplete:onRangeChange},
                zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:"x", onZoomComplete:onRangeChange},
                limits:{x:{}} }},
       scales:{
         x:{type:"linear", grid:{color:"#ffffff10"},
            ticks:{color:"#7f90a8", maxTicksLimit:8, autoSkip:true, callback:fmtTick}},
-        y:{grid:{color:"#ffffff10"}, ticks:{color:"#7f90a8"}}}}
+        // first-declared stacked axis renders at the bottom, so declare humidity first
+        // to put the temperature panel on top.
+        yHum:  yAxis(COLORS.hum,  "%"),
+        yTemp: yAxis(COLORS.temp, "°C")}}
   });
 }
-function applyWindowToCharts(){
-  for(const c of [tempChart, humChart]){
-    c.options.scales.x.min = win.from*1000;
-    c.options.scales.x.max = win.to*1000;
-  }
-}
+function applyWindow(){ chart.zoomScale("x", {min: win.from*1000, max: win.to*1000}, "none"); }
 function setLimits(){
   if(!extent || !extent.earliest) return;
-  const lim = {min: extent.earliest*1000, max: extent.latest*1000};
-  for(const c of [tempChart, humChart]) c.options.plugins.zoom.limits.x = lim;
+  chart.options.plugins.zoom.limits.x = {min: extent.earliest*1000, max: extent.latest*1000};
 }
 function renderHistory(r){
   extent = r.extent;
-  const tPts = [], hPts = [];
-  if(r.points && r.points.length){
-    for(const p of r.points){ tPts.push({x:p.ts*1000, y:p.temperature}); hPts.push({x:p.ts*1000, y:p.humidity}); }
-  } else {
-    for(const b of (r.bands||[])){
-      tPts.push({x:b.hour_ts*1000, y:(b.min_temp+b.max_temp)/2});
-      hPts.push({x:b.hour_ts*1000, y:(b.min_hum+b.max_hum)/2});
-    }
-    tPts.sort((a,b)=>a.x-b.x); hPts.sort((a,b)=>a.x-b.x);
+  // Merge coarse hourly history (older) with fine live readings (recent). Raw readings
+  // win for any hour they cover, so the chart is full instead of a tiny recent cluster.
+  const rawHours = new Set((r.points||[]).map(p => Math.floor(p.ts/3600)));
+  const t = [], h = [];
+  for(const b of (r.bands||[])){
+    if(rawHours.has(Math.floor(b.hour_ts/3600))) continue;
+    t.push({x:b.hour_ts*1000, y:(b.min_temp+b.max_temp)/2});
+    h.push({x:b.hour_ts*1000, y:(b.min_hum+b.max_hum)/2});
   }
-  tempChart.data.datasets[0].data = tPts;
-  humChart.data.datasets[0].data  = hPts;
+  for(const p of (r.points||[])){
+    t.push({x:p.ts*1000, y:p.temperature});
+    h.push({x:p.ts*1000, y:p.humidity});
+  }
+  t.sort((a,b)=>a.x-b.x); h.sort((a,b)=>a.x-b.x);
+  chart.data.datasets[0].data = t;
+  chart.data.datasets[1].data = h;
   setLimits();
-  tempChart.update("none"); humChart.update("none");
+  chart.update("none");
 }
 async function loadRange(token){       // server-anchored preset (clock-independent)
   let r; try{ r = await (await fetch(`/api/history?range=${token}`)).json(); }catch(e){ return; }
   win = {from: r.from, to: r.to};
-  renderHistory(r); applyWindowToCharts();
-  tempChart.update("none"); humChart.update("none");
+  renderHistory(r); applyWindow();
 }
 async function loadWindow(){           // explicit window (after pan/zoom or data change)
   if(!win) return;
@@ -311,12 +310,10 @@ async function loadWindow(){           // explicit window (after pan/zoom or dat
 }
 function reload(){ return activeToken ? loadRange(activeToken) : loadWindow(); }
 function onRangeChange({chart}){
-  const x = chart.options.scales.x;
+  const x = chart.scales.x;
   win = {from: Math.round(x.min/1000), to: Math.round(x.max/1000)};
   activeToken = null;                  // now a custom window
   document.querySelectorAll('#ranges button').forEach(b=>b.classList.remove("active"));
-  const other = chart === tempChart ? humChart : tempChart;
-  other.options.scales.x.min = x.min; other.options.scales.x.max = x.max; other.update("none");
   clearTimeout(fetchTimer); fetchTimer = setTimeout(loadWindow, 250);
 }
 function setRange(r){
@@ -341,7 +338,7 @@ async function refreshGaps(){
     $("gapFillable").textContent = f.length ? `${f.length} hour(s) fillable` : "";
     $("fillBtn").style.display = f.length ? "" : "none";
     $("gapUnrecoverable").textContent = u.length
-      ? `+ ${u.length} earlier hour(s) unavailable — beyond the sensor's ~2-day memory` : "";
+      ? `+ ${u.length} earlier hour(s) unavailable — beyond the sensor's stored history` : "";
   }catch(e){}
 }
 function pollBackfill(){
@@ -393,9 +390,8 @@ $("ranges").addEventListener("click", e=>{ if(e.target.tagName === "BUTTON") set
 
 window.addEventListener("load", ()=>{
   Chart.register(window.ChartZoom || window['chartjs-plugin-zoom']);
-  tempChart = mkChart($("tempChart"), COLORS.temp);
-  humChart  = mkChart($("humChart"),  COLORS.hum);
-  window.tempChart = tempChart; window.humChart = humChart;
+  chart = mkChart($("chart"));
+  window.chart = chart;
   refreshCurrent();
   setRange("24h");
   refreshGaps();

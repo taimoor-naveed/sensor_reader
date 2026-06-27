@@ -78,19 +78,30 @@ def test_update_button_cycles(pw):
         page.close()
 
 
-def test_charts_pan_in_sync(pw):
+def test_chart_has_both_series(pw):
     p, browser = pw
     with LiveServer(build_app("normal")) as srv:
         page = _desktop_page(browser)
         page.goto(srv.url, wait_until="networkidle")
-        page.wait_for_function(
-            "window.tempChart && window.humChart && window.tempChart.data.datasets[0].data.length>0")
-        synced = page.evaluate("""() => {
-            tempChart.options.scales.x.min = 1000000; tempChart.options.scales.x.max = 2000000;
-            tempChart.options.plugins.zoom.zoom.onZoomComplete({chart: tempChart});
-            return humChart.options.scales.x.min === 1000000 && humChart.options.scales.x.max === 2000000;
-        }""")
-        assert synced
+        page.wait_for_function("window.chart && window.chart.data.datasets.length === 2")
+        ok = page.evaluate(
+            "()=>window.chart.data.datasets[0].data.length>0 && window.chart.data.datasets[1].data.length>0")
+        assert ok, "single chart should hold both temperature and humidity series"
+        page.close()
+
+
+def test_chart_merges_history_with_live(pw):
+    # Fresh deploy: sparse recent live readings + ~3 days of hourly history. The 24h view
+    # must show the hourly history, not just a tiny recent cluster crammed at the edge.
+    p, browser = pw
+    with LiveServer(build_app("fresh_deploy")) as srv:
+        page = _desktop_page(browser)
+        page.goto(srv.url, wait_until="networkidle")
+        page.wait_for_function("window.chart && window.chart.data.datasets[0].data.length>0")
+        page.wait_for_timeout(600)
+        span_h = page.evaluate("""()=>{const d=window.chart.data.datasets[0].data;
+            const xs=d.map(p=>p.x); return (Math.max(...xs)-Math.min(...xs))/3600000;}""")
+        assert span_h >= 12, f"chart only spans {span_h}h; hourly history not merged with live"
         page.close()
 
 
