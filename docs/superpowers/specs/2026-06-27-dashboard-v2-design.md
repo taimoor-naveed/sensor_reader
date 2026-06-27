@@ -133,7 +133,14 @@ synced timeline**: panning/zooming either updates both to the same window.
 - **Dynamic loading:** a new `GET /api/history?from=<ts>&to=<ts>` returns the visible window.
   Granularity is chosen by span: **span ≤ 48 h** returns raw per-minute `readings`; **otherwise**
   hourly bands (`hourly_rollup` of live readings + device `history`). The current preset endpoint is
-  generalized to from/to.
+  generalized to from/to. The response also includes the **data extent** `{earliest, latest}`
+  (cheap MIN/MAX over readings + history).
+- **Timeline extent & past data:** the charts' pan/zoom **limits** and the `All` range are bounded
+  by that extent, not just by what's currently loaded. When **Fill** pulls in *older* history the
+  earliest bound moves back — so on a successful fill the frontend re-reads the extent and
+  **expands the pan limits + `All`** (the user can immediately scroll/zoom back into the
+  newly-available past) and re-fetches the current window so any backfilled gaps render in place
+  (line breaks close). Both charts update together. An **Update** simply moves `latest` to now.
 
 ---
 
@@ -172,7 +179,7 @@ line regardless.
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | GET  | `/api/current` | snapshot + per-field timestamps, `battery_source`, `signal_bars`, `today_high/low(+ts)` |
-| GET  | `/api/history?from=&to=` | points/bands for an arbitrary window (granularity by span); presets kept as from/to shortcuts |
+| GET  | `/api/history?from=&to=` | points/bands for a window + `extent {earliest,latest}`; granularity by span; presets kept as from/to shortcuts |
 | GET  | `/api/gaps?from=&to=` | `{ "fillable": [...], "unrecoverable": [...] }` |
 | POST | `/api/update` | trigger one-shot GATT live read; returns the new snapshot |
 | POST | `/api/backfill` | start async backfill of a range; returns `{ "started": true }` |
@@ -203,7 +210,9 @@ Single self-contained page (consistent with v1), Aurora theme. Structure:
 JS responsibilities: poll `/api/current` (2 s) and diff for pulses + freshness; range chips and
 zoom/pan → fetch `/api/history?from&to` (debounced) and keep both charts' x-range in sync; `Update`
 button → POST `/api/update` with the state machine; gap banner `Fill` → POST `/api/backfill` then
-poll `/api/backfill/status` to drive the progress bar, then refresh charts + gaps.
+poll `/api/backfill/status` to drive the progress bar; on completion, refresh gaps, **expand the
+chart pan limits + `All` from the new data extent**, and re-fetch the visible window so backfilled
+past data appears.
 
 ### Aurora visual tokens
 - Background: `radial-gradient(1100px 520px at 80% -12%, #16323f, #0e1420)`.
