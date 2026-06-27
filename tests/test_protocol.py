@@ -82,3 +82,27 @@ def test_parse_device_time_four_bytes_no_tz():
     epoch, tz = parse_device_time(bytes.fromhex("64fc0200"))
     assert epoch == 195684
     assert tz == 0
+
+
+def test_parse_data_decodes_temp_humidity_voltage():
+    from lywsd03mmc_monitor.protocol import parse_data
+    raw = struct.pack("<hBh", 2340, 48, 3040)  # 23.40C, 48%, 3.040V
+    temp, hum, volts = parse_data(raw)
+    assert temp == 23.4
+    assert hum == 48
+    assert abs(volts - 3.04) < 1e-9
+
+
+def test_parse_numrec_total_and_current():
+    from lywsd03mmc_monitor.protocol import parse_numrec
+    raw = struct.pack("<II", 54, 12)
+    assert parse_numrec(raw) == (54, 12)
+
+
+def test_voltage_to_percent_curve_and_clamp():
+    from lywsd03mmc_monitor.protocol import voltage_to_percent
+    assert voltage_to_percent(3.1) == 100
+    assert voltage_to_percent(2.1) == 0
+    assert voltage_to_percent(3.04) == 94
+    assert voltage_to_percent(3.6) == 100   # clamp high
+    assert voltage_to_percent(1.8) == 0     # clamp low

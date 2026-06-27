@@ -7,6 +7,27 @@ from cryptography.hazmat.primitives.ciphers.aead import AESCCM
 SERVICE_UUID = "0000fe95-0000-1000-8000-00805f9b34fb"
 PRODUCT_ID = 0x055B
 
+UUID_DATA = "ebe0ccc1-7a0a-4b0c-8a1a-6ff2997da3a6"
+UUID_NUMREC = "ebe0ccb9-7a0a-4b0c-8a1a-6ff2997da3a6"
+
+
+def parse_data(data: bytes) -> tuple[float, int, float]:
+    """DATA char (EBE0CCC1): 5-byte <hBh = temp/100, humidity, voltage/1000."""
+    temp_raw, humidity, volt_raw = struct.unpack("<hBh", data[:5])
+    return temp_raw / 100, humidity, volt_raw / 1000
+
+
+def parse_numrec(data: bytes) -> tuple[int, int]:
+    """NUMREC char (EBE0CCB9): 8-byte <II = (total, current)."""
+    total, current = struct.unpack("<II", data[:8])
+    return total, current
+
+
+def voltage_to_percent(volts: float) -> int:
+    """CR2032 curve: 2.1 V -> 0 %, 3.1 V -> 100 %, clamped."""
+    pct = (volts - 2.1) / (3.1 - 2.1) * 100
+    return max(0, min(100, round(pct)))
+
 
 @dataclass
 class Reading:
