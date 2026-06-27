@@ -349,8 +349,9 @@ function pollBackfill(){
     const iv = setInterval(async ()=>{
       let st; try{ st = await (await fetch("/api/backfill/status")).json(); }catch(e){ return; }
       if(st.state === "reading" && st.total){
-        $("fillProgressText").textContent = `Reading history… ${st.received} / ${st.total} records`;
-        $("fillProgressBar").style.width = Math.round(st.received/st.total*100) + "%";
+        const denom = Math.max(st.total, st.received);   // NUMREC can lag actual stream
+        $("fillProgressText").textContent = `Reading history… ${st.received} / ${denom} records`;
+        $("fillProgressBar").style.width = Math.min(100, Math.round(st.received/denom*100)) + "%";
       } else if(st.state === "connecting"){
         $("fillProgressText").innerHTML = '<span class="spin"></span> Connecting…';
       } else if(st.state === "done"){
