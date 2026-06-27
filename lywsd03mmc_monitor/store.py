@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS history (
   min_hum INTEGER,
   max_hum INTEGER
 );
+CREATE TABLE IF NOT EXISTS meta (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
 """
 
 
@@ -95,3 +99,58 @@ class Store:
                 gaps.append(h)
             h += 3600
         return gaps
+
+    def set_device_boot_epoch(self, epoch: int) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('device_boot_epoch', ?)",
+            (str(int(epoch)),),
+        )
+        self.conn.commit()
+
+    def get_device_boot_epoch(self):
+        row = self.conn.execute(
+            "SELECT value FROM meta WHERE key = 'device_boot_epoch'"
+        ).fetchone()
+        return int(row[0]) if row else None
+
+    def classify_gaps(self, start: int, end: int, boot_epoch) -> dict:
+        gaps = self.fillable_gaps(start, end)
+        if boot_epoch is None:
+            return {"fillable": gaps, "unrecoverable": []}
+        boot_hour = boot_epoch - (boot_epoch % 3600)
+        fillable = [h for h in gaps if h >= boot_hour]
+        unrecoverable = [h for h in gaps if h < boot_hour]
+        return {"fillable": fillable, "unrecoverable": unrecoverable}
+
+    def today_high_low(self, start: int, end: int) -> dict:
+        union = (
+            "SELECT ts AS t, temperature AS v FROM readings WHERE ts >= ? AND ts < ? "
+            "UNION ALL SELECT hour_ts, max_temp FROM history WHERE hour_ts >= ? AND hour_ts < ? "
+            "UNION ALL SELECT hour_ts, min_temp FROM history WHERE hour_ts >= ? AND hour_ts < ?"
+        )
+        args = (start, end, start, end, start, end)
+        hi = self.conn.execute(
+            f"SELECT t, v FROM ({union}) WHERE v IS NOT NULL ORDER BY v DESC, t ASC LIMIT 1", args
+        ).fetchone()
+        lo = self.conn.execute(
+            f"SELECT t, v FROM ({union}) WHERE v IS NOT NULL ORDER BY v ASC, t ASC LIMIT 1", args
+        ).fetchone()
+        return {
+            "high": hi[1] if hi else None, "high_ts": hi[0] if hi else None,
+            "low": lo[1] if lo else None, "low_ts": lo[0] if lo else None,
+        }
+
+    def extent(self) -> dict:
+        row = self.conn.execute(
+            "SELECT MIN(t), MAX(t) FROM "
+            "(SELECT ts AS t FROM readings UNION ALL SELECT hour_ts FROM history)"
+        ).fetchone()
+        return {"earliest": row[0], "latest": row[1]}
+
+    def history_window(self, start: int, end: int) -> dict:
+        if end - start <= 48 * 3600:
+            return {"points": self.readings_between(start, end),
+                    "bands": self.history_between(start, end)}
+        bands = self.hourly_rollup(start, end) + self.history_between(start, end)
+        bands.sort(key=lambda b: b["hour_ts"])
+        return {"points": [], "bands": bands}

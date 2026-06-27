@@ -38,3 +38,64 @@ def test_fillable_gaps_skips_hours_with_history(tmp_path):
         "INSERT INTO history VALUES (3600, 18.0, 19.0, 40, 45)")
     s.conn.commit()
     assert s.fillable_gaps(0, 7200) == [0]  # hour 1 already backfilled
+
+
+def test_boot_epoch_round_trips(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    assert s.get_device_boot_epoch() is None
+    s.set_device_boot_epoch(1_700_000_000)
+    assert s.get_device_boot_epoch() == 1_700_000_000
+    s.set_device_boot_epoch(1_700_000_500)   # replace
+    assert s.get_device_boot_epoch() == 1_700_000_500
+
+
+def test_classify_gaps_splits_on_boot_epoch(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    # hours 0..4 are all empty -> all gaps; boot at hour 2
+    res = s.classify_gaps(0, 5 * 3600, boot_epoch=2 * 3600)
+    assert res["unrecoverable"] == [0, 3600]
+    assert res["fillable"] == [7200, 10800, 14400]
+
+
+def test_classify_gaps_none_boot_all_fillable(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    res = s.classify_gaps(0, 2 * 3600, boot_epoch=None)
+    assert res["unrecoverable"] == []
+    assert res["fillable"] == [0, 3600]
+
+
+def test_today_high_low_picks_extremes_with_ts(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    s.add_reading(100, 20.0, 40.0, 90, -60)
+    s.add_reading(200, 25.5, 41.0, 90, -60)   # high
+    s.add_reading(300, 18.2, 39.0, 90, -60)   # low
+    res = s.today_high_low(0, 1000)
+    assert res["high"] == 25.5 and res["high_ts"] == 180   # 200 floored to minute
+    assert res["low"] == 18.2 and res["low_ts"] == 300
+
+
+def test_today_high_low_empty(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    assert s.today_high_low(0, 1000) == {"high": None, "low": None,
+                                         "high_ts": None, "low_ts": None}
+
+
+def test_extent_spans_readings_and_history(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    s.add_reading(5000, 20.0, 40.0, 90, -60)
+    s.add_history(3600, 18.0, 22.0, 40, 55)   # earlier
+    ext = s.extent()
+    assert ext["earliest"] == 3600
+    assert ext["latest"] == 4980   # 5000 floored to minute
+
+
+def test_history_window_raw_vs_bands(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    s.add_reading(1000, 20.0, 40.0, 90, -60)
+    raw = s.history_window(0, 3600)            # 1h span -> raw points
+    assert raw["points"] and raw["bands"] == []
+    s.add_reading(100, 19.0, 39.0, 90, -60)
+    s.add_reading(200, 23.0, 44.0, 90, -60)
+    wide = s.history_window(0, 3 * 86400)      # 3d span -> bands only
+    assert wide["points"] == []
+    assert any(b["min_temp"] == 19.0 and b["max_temp"] == 23.0 for b in wide["bands"])
