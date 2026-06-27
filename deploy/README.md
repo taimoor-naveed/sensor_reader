@@ -1,5 +1,8 @@
 # Deploying to the Windows home PC
 
+> Full process, reboot behavior, and troubleshooting: **[`docs/deployment.md`](../docs/deployment.md)**.
+> This file is the quick reference that lives next to the scripts.
+
 The app runs on **<host>** (`<user>@<host>`, Windows 10) as a background service that
 autostarts at logon and serves the dashboard on the LAN at **http://<host>:8787**.
 
