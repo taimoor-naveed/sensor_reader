@@ -52,9 +52,45 @@ def test_range_toggle_moves_active_class(pw):
     with LiveServer(build_app("normal")) as srv:
         page = _desktop_page(browser)
         page.goto(srv.url, wait_until="networkidle")
-        for r in ["hour", "day", "week"]:
+        for r in ["6h", "24h", "7d", "all"]:
             page.click(f'button[data-r="{r}"]')
             assert "active" in page.get_attribute(f'button[data-r="{r}"]', "class")
+        page.close()
+
+
+def test_signal_bars_render(pw):
+    p, browser = pw
+    with LiveServer(build_app("normal")) as srv:
+        page = _desktop_page(browser)
+        page.goto(srv.url, wait_until="networkidle")
+        page.wait_for_function("document.querySelectorAll('#signalBars i').length === 4")
+        page.close()
+
+
+def test_update_button_cycles(pw):
+    p, browser = pw
+    with LiveServer(build_app("normal")) as srv:
+        page = _desktop_page(browser)
+        page.goto(srv.url, wait_until="networkidle")
+        page.click("#updateBtn")
+        page.wait_for_function(
+            "document.querySelector('#temp').textContent.includes('22.9')", timeout=5000)
+        page.close()
+
+
+def test_charts_pan_in_sync(pw):
+    p, browser = pw
+    with LiveServer(build_app("normal")) as srv:
+        page = _desktop_page(browser)
+        page.goto(srv.url, wait_until="networkidle")
+        page.wait_for_function(
+            "window.tempChart && window.humChart && window.tempChart.data.datasets[0].data.length>0")
+        synced = page.evaluate("""() => {
+            tempChart.options.scales.x.min = 1000000; tempChart.options.scales.x.max = 2000000;
+            tempChart.options.plugins.zoom.zoom.onZoomComplete({chart: tempChart});
+            return humChart.options.scales.x.min === 1000000 && humChart.options.scales.x.max === 2000000;
+        }""")
+        assert synced
         page.close()
 
 
@@ -65,7 +101,7 @@ def test_empty_scenario_no_js_errors(pw):
         page = _desktop_page(browser)
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.goto(srv.url, wait_until="networkidle")
-        page.click('button[data-r="week"]')
+        page.click('button[data-r="7d"]')
         page.wait_for_timeout(500)
         assert page.inner_text("#temp") == "--"
         assert errors == [], f"JS errors on empty data: {errors}"
@@ -86,8 +122,7 @@ def test_offline_state_shows(pw):
     with LiveServer(build_app("offline")) as srv:
         page = _desktop_page(browser)
         page.goto(srv.url, wait_until="networkidle")
-        page.wait_for_function("document.querySelector('#online').textContent === 'Offline'")
-        assert "off" in page.get_attribute("#dot", "class")
+        page.wait_for_function("document.querySelector('#liveBadge').textContent === 'Offline'")
         page.close()
 
 
@@ -96,7 +131,7 @@ def test_no_gap_banner_hidden_when_no_gaps(pw):
     with LiveServer(build_app("normal")) as srv:
         page = _desktop_page(browser)
         page.goto(srv.url, wait_until="networkidle")
-        page.wait_for_function("window._gaps === null")
+        page.wait_for_timeout(800)               # let refreshGaps run
         assert page.is_hidden("#gapWrap")
         page.close()
 
@@ -109,10 +144,27 @@ def test_gap_fill_touch_flow(pw):
         page = ctx.new_page()
         page.goto(srv.url, wait_until="networkidle")
         page.wait_for_selector("#gapWrap", state="visible")
-        assert "missing" in page.inner_text("#gapText")
+        assert "fillable" in page.inner_text("#gapFillable")
         page.tap("#fillBtn")                     # touch, not click
-        page.wait_for_selector("#gapWrap", state="hidden", timeout=8000)
+        page.wait_for_function(
+            "document.querySelector('#fillProgressText').textContent.includes('Filled')",
+            timeout=8000)
         ctx.close()
+
+
+def test_backfill_clears_fillable_after_fill(pw):
+    p, browser = pw
+    with LiveServer(build_app("with_gaps")) as srv:
+        page = _desktop_page(browser)
+        page.goto(srv.url, wait_until="networkidle")
+        page.wait_for_selector("#fillBtn")
+        page.click("#fillBtn")
+        page.wait_for_function(
+            "document.querySelector('#fillProgressText').textContent.includes('Filled')",
+            timeout=8000)
+        # all fillable gaps resolved -> banner clears
+        page.wait_for_selector("#gapWrap", state="hidden", timeout=5000)
+        page.close()
 
 
 def test_backfill_failure_reenables_button(pw):

@@ -173,9 +173,8 @@
 <script>
 const $ = id => document.getElementById(id);
 let lastSnap = {};
-let tempChart, humChart, win = null, extent = null, fetchTimer = null;
+let tempChart, humChart, win = null, extent = null, fetchTimer = null, activeToken = "24h";
 const COLORS = {temp:"#9be4ff", hum:"#e879c9"};
-const RANGES = {"6h":21600, "24h":86400, "7d":604800};
 
 /* ---------- live values ---------- */
 function ago(ts){
@@ -223,7 +222,7 @@ async function refreshCurrent(){
   $("liveBadge").textContent = r.online ? "Live" : "Offline";
   $("liveDot").style.background = r.online ? "var(--ok)" : "var(--muted2)";
   $("liveDot").style.boxShadow  = r.online ? "0 0 9px var(--ok)" : "none";
-  $("batbadge").innerHTML = r.battery_low ? '<span class="badge">Low</span>' : "";
+  $("batbadge").innerHTML = r.battery_low ? '<span class="badge">Low battery</span>' : "";
   $("todaySub").textContent = (r.today_high_ts && r.today_low_ts)
     ? `high ${hm(r.today_high_ts)} · low ${hm(r.today_low_ts)}` : "—";
   renderBars(r.signal_bars ?? 0);
@@ -238,7 +237,7 @@ async function doUpdate(){
     const resp = await fetch("/api/update", {method:"POST"});
     if(resp.status === 409){ b.textContent = "Sensor busy"; }
     else if(!resp.ok){ b.textContent = "Failed"; }
-    else { b.textContent = "✓ Updated"; await refreshCurrent(); await loadHistory(); }
+    else { b.textContent = "✓ Updated"; await refreshCurrent(); await reload(); }
   }catch(e){ b.textContent = "Failed"; }
   setTimeout(()=>{ b.textContent = "↻ Update"; b.disabled = false; }, 1500);
 }
@@ -282,16 +281,7 @@ function setLimits(){
   const lim = {min: extent.earliest*1000, max: extent.latest*1000};
   for(const c of [tempChart, humChart]) c.options.plugins.zoom.limits.x = lim;
 }
-function onRangeChange({chart}){
-  const x = chart.options.scales.x;
-  win = {from: Math.round(x.min/1000), to: Math.round(x.max/1000)};
-  const other = chart === tempChart ? humChart : tempChart;
-  other.options.scales.x.min = x.min; other.options.scales.x.max = x.max; other.update("none");
-  clearTimeout(fetchTimer); fetchTimer = setTimeout(loadHistory, 250);
-}
-async function loadHistory(){
-  if(!win) return;
-  let r; try{ r = await (await fetch(`/api/history?from=${win.from}&to=${win.to}`)).json(); }catch(e){ return; }
+function renderHistory(r){
   extent = r.extent;
   const tPts = [], hPts = [];
   if(r.points && r.points.length){
@@ -305,29 +295,48 @@ async function loadHistory(){
   }
   tempChart.data.datasets[0].data = tPts;
   humChart.data.datasets[0].data  = hPts;
-  applyWindowToCharts(); setLimits();
+  setLimits();
   tempChart.update("none"); humChart.update("none");
 }
+async function loadRange(token){       // server-anchored preset (clock-independent)
+  let r; try{ r = await (await fetch(`/api/history?range=${token}`)).json(); }catch(e){ return; }
+  win = {from: r.from, to: r.to};
+  renderHistory(r); applyWindowToCharts();
+  tempChart.update("none"); humChart.update("none");
+}
+async function loadWindow(){           // explicit window (after pan/zoom or data change)
+  if(!win) return;
+  let r; try{ r = await (await fetch(`/api/history?from=${win.from}&to=${win.to}`)).json(); }catch(e){ return; }
+  renderHistory(r);
+}
+function reload(){ return activeToken ? loadRange(activeToken) : loadWindow(); }
+function onRangeChange({chart}){
+  const x = chart.options.scales.x;
+  win = {from: Math.round(x.min/1000), to: Math.round(x.max/1000)};
+  activeToken = null;                  // now a custom window
+  document.querySelectorAll('#ranges button').forEach(b=>b.classList.remove("active"));
+  const other = chart === tempChart ? humChart : tempChart;
+  other.options.scales.x.min = x.min; other.options.scales.x.max = x.max; other.update("none");
+  clearTimeout(fetchTimer); fetchTimer = setTimeout(loadWindow, 250);
+}
 function setRange(r){
-  const now = Math.floor(Date.now()/1000);
-  if(r === "all"){
-    win = (extent && extent.earliest) ? {from:extent.earliest, to:extent.latest} : {from:now-86400, to:now};
-  } else {
-    win = {from: now - RANGES[r], to: now};
-  }
+  activeToken = r;
   document.querySelectorAll('#ranges button').forEach(b=>b.classList.toggle("active", b.dataset.r === r));
-  loadHistory();
+  loadRange(r);
 }
 
 /* ---------- gaps + backfill ---------- */
 let gapState = null;
 async function refreshGaps(){
   try{
-    const now = Math.floor(Date.now()/1000);
-    const r = await (await fetch(`/api/gaps?from=${now-604800}&to=${now}`)).json();
+    const r = await (await fetch(`/api/gaps?range=week`)).json();
     gapState = r;
     const f = r.fillable || [], u = r.unrecoverable || [];
-    if(!f.length && !u.length){ $("gapWrap").style.display = "none"; return; }
+    if(!f.length && !u.length){
+      $("gapWrap").style.display = "none";
+      $("gapFillable").textContent = ""; $("gapUnrecoverable").textContent = "";
+      return;
+    }
     $("gapWrap").style.display = "block";
     $("gapFillable").textContent = f.length ? `${f.length} hour(s) fillable` : "";
     $("fillBtn").style.display = f.length ? "" : "none";
@@ -348,7 +357,7 @@ function pollBackfill(){
         clearInterval(iv);
         $("fillProgressText").textContent = `✓ Filled ${st.filled} hour(s)`;
         $("fillProgressBar").style.width = "100%";
-        await refreshGaps(); await loadHistory();
+        await refreshGaps(); await reload();
         resolve();
       } else if(st.state === "error"){
         clearInterval(iv);

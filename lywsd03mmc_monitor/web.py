@@ -9,7 +9,8 @@ from fastapi.staticfiles import StaticFiles
 from lywsd03mmc_monitor.protocol import Reading
 
 _STATIC = Path(__file__).parent / "static"
-_RANGES = {"hour": 3600, "day": 86400, "week": 604800}
+_RANGES = {"hour": 3600, "6h": 21600, "day": 86400, "24h": 86400,
+           "7d": 604800, "week": 604800}
 
 
 def create_app(store, state, now_fn, backfill_fn=None, update_fn=None) -> FastAPI:
@@ -43,12 +44,18 @@ def create_app(store, state, now_fn, backfill_fn=None, update_fn=None) -> FastAP
                 start: int = Query(None, alias="from"),
                 end: int = Query(None, alias="to")):
         now = int(now_fn())
+        ext = store.extent()
         if start is None or end is None:
-            span = _RANGES.get(range or "day", 86400)
-            start, end = now - span, now
-        win = store.history_window(int(start), int(end))
-        return {"range": range or "custom", "points": win["points"],
-                "bands": win["bands"], "extent": store.extent()}
+            if range == "all":
+                start = ext["earliest"] if ext["earliest"] is not None else now - 86400
+                end = ext["latest"] if ext["latest"] is not None else now
+            else:
+                span = _RANGES.get(range or "day", 86400)
+                start, end = now - span, now
+        start, end = int(start), int(end)
+        win = store.history_window(start, end)
+        return {"range": range or "custom", "from": start, "to": end,
+                "points": win["points"], "bands": win["bands"], "extent": ext}
 
     @app.get("/api/gaps")
     def gaps(range: str = None,

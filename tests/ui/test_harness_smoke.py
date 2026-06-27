@@ -12,4 +12,4 @@ def test_server_serves_current():
 def test_with_gaps_reports_gaps():
     with LiveServer(build_app("with_gaps")) as srv:
         r = httpx.get(srv.url + "/api/gaps?range=week")
-        assert len(r.json()["gaps"]) >= 5
+        assert len(r.json()["fillable"]) >= 5

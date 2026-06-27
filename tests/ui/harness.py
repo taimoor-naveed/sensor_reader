@@ -47,16 +47,27 @@ def build_app(scenario="normal"):
         last_seen = NOW - 600 if scenario == "offline" else NOW
         state.update(Reading(temperature=21.4, humidity=46, battery=battery), -58, last_seen)
 
-    def fake_backfill(start_ts, end_ts):
+    if scenario != "empty":
+        store.set_device_boot_epoch(NOW - 3 * 86400)   # ~3 days of fillable history
+
+    def fake_backfill(start_ts, end_ts, progress_cb=None):
         n = 0
         h = start_ts - (start_ts % 3600)
+        total = max(1, (end_ts - start_ts) // 3600)
         while h <= end_ts:
             store.add_history(h, 18.0, 22.0, 40, 55)
             n += 1
+            if progress_cb:
+                progress_cb(n, total)
             h += 3600
         return n
 
-    return create_app(store, state, now_fn=lambda: NOW, backfill_fn=fake_backfill)
+    def fake_update():
+        return {"temperature": 22.9, "humidity": 48, "voltage": 3.0,
+                "battery": 90, "boot_epoch": NOW - 3 * 86400}
+
+    return create_app(store, state, now_fn=lambda: NOW,
+                      backfill_fn=fake_backfill, update_fn=fake_update)
 
 
 def _free_port():
