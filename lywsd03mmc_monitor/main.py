@@ -16,11 +16,16 @@ async def run(config_path: str = "config.toml") -> None:
     state = LiveState(cfg.offline_after_seconds, cfg.battery_warn_below)
     scanner = Scanner(cfg.bindkey, store, state, now_fn=time.time, address=cfg.address)
 
-    def backfill_fn(start_ts: int, end_ts: int):
-        from lywsd03mmc_monitor.gatt import backfill  # Phase 2
-        return backfill(scanner.last_device, store, start_ts, end_ts)
+    def backfill_fn(start_ts: int, end_ts: int, progress_cb=None):
+        from lywsd03mmc_monitor.gatt import backfill
+        return backfill(scanner.last_device, store, start_ts, end_ts, progress_cb=progress_cb)
 
-    app = create_app(store, state, now_fn=time.time, backfill_fn=backfill_fn)
+    def update_fn():
+        from lywsd03mmc_monitor.gatt import read_live
+        return read_live(scanner.last_device)
+
+    app = create_app(store, state, now_fn=time.time,
+                     backfill_fn=backfill_fn, update_fn=update_fn)
 
     await scanner.start()
     server = uvicorn.Server(uvicorn.Config(app, host=cfg.host, port=cfg.port, log_level="info"))
