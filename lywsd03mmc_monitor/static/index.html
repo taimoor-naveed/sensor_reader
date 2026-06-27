@@ -133,7 +133,6 @@
       <span class="gapfill" id="gapFillable"></span>
       <button class="fillbtn" id="fillBtn">Fill from sensor</button>
     </div>
-    <div class="gapunrec" id="gapUnrecoverable"></div>
     <div class="progress" id="fillProgressWrap" style="display:none">
       <div class="ptext" id="fillProgressText">Connecting…</div>
       <div class="ptrack"><div class="pbar" id="fillProgressBar"></div></div>
@@ -328,17 +327,15 @@ async function refreshGaps(){
   try{
     const r = await (await fetch(`/api/gaps?range=week`)).json();
     gapState = r;
-    const f = r.fillable || [], u = r.unrecoverable || [];
-    if(!f.length && !u.length){
+    const f = r.fillable || [];
+    if(!f.length){                       // only surface actually-fillable gaps
       $("gapWrap").style.display = "none";
-      $("gapFillable").textContent = ""; $("gapUnrecoverable").textContent = "";
+      $("gapFillable").textContent = "";
       return;
     }
     $("gapWrap").style.display = "block";
-    $("gapFillable").textContent = f.length ? `${f.length} hour(s) fillable` : "";
-    $("fillBtn").style.display = f.length ? "" : "none";
-    $("gapUnrecoverable").textContent = u.length
-      ? `+ ${u.length} earlier hour(s) unavailable — beyond the sensor's stored history` : "";
+    $("gapFillable").textContent = `${f.length} hour(s) fillable`;
+    $("fillBtn").style.display = "";
   }catch(e){}
 }
 function pollBackfill(){
