@@ -90,8 +90,8 @@
 
   <div class="topbar">
     <div>
-      <div class="title">Bedroom</div>
-      <div class="subtitle">LYWSD03MMC Monitor</div>
+      <div class="title">LYWSD03MMC</div>
+      <div class="subtitle">Sensor Monitor</div>
     </div>
     <div class="controls">
       <span class="bars" id="signalBars" title="Signal strength"></span>
@@ -144,7 +144,7 @@
     <div class="charthead">
       <div class="label">Temperature &amp; Humidity</div>
       <div style="display:flex;align-items:center;gap:14px">
-        <span class="hint">drag to pan · scroll / pinch to zoom</span>
+        <span class="hint">drag or scroll sideways to pan · pinch or Ctrl-scroll to zoom</span>
         <div class="chips" id="ranges">
           <button data-r="6h">6h</button>
           <button data-r="24h" class="active">24h</button>
@@ -161,8 +161,9 @@
 <script>
 const $ = id => document.getElementById(id);
 let lastSnap = {};
-let chart = null, win = null, extent = null, fetchTimer = null, activeToken = "24h";
+let chart = null, win = null, extent = null, fetchTimer = null, activeToken = "24h", lastFetch = 0;
 const COLORS = {temp:"#9be4ff", hum:"#e879c9"};
+const IS_TOUCH = window.matchMedia("(pointer: coarse)").matches;
 
 /* ---------- live values ---------- */
 function ago(ts){
@@ -245,7 +246,7 @@ function mkChart(canvas){
   const ctx = canvas.getContext("2d");
   const ds = (label, color, axis) => ({
     label, yAxisID:axis, data:[], borderColor:color, backgroundColor:gradient(ctx,color),
-    borderWidth:2, fill:true, tension:.35, pointRadius:0, spanGaps:true,  // always join the line
+    borderWidth:2, fill:true, cubicInterpolationMode:"monotone", pointRadius:0, spanGaps:true,
   });
   const yAxis = (color, unit) => ({
     type:"linear", position:"left", stack:"panels", stackWeight:1, offset:true,
@@ -256,12 +257,18 @@ function mkChart(canvas){
     data:{datasets:[ ds("Temperature °C", COLORS.temp, "yTemp"),
                      ds("Humidity %",     COLORS.hum,  "yHum") ]},
     options:{responsive:true, maintainAspectRatio:false, animation:false,
-      interaction:{mode:"nearest", axis:"x", intersect:false},
+      interaction:{mode:"index", axis:"x", intersect:false},
       plugins:{
-        legend:{display:true, position:"top",
+        // legend hidden on touch; non-interactive on desktop (no accidental series toggle)
+        legend:{display: !IS_TOUCH, onClick: () => {}, position:"top",
                 labels:{color:"#9fb0c4", usePointStyle:true, boxWidth:8, boxHeight:8, padding:14}},
-        zoom:{ pan:{enabled:true, mode:"x", onPanComplete:onRangeChange},
-               zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:"x", onZoomComplete:onRangeChange},
+        // tooltip off on touch (looks bad / awkward); on desktop show a real date, not the raw ms
+        tooltip:{enabled: !IS_TOUCH, callbacks:{
+          title: items => items.length ? new Date(items[0].parsed.x)
+            .toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"}) : ""}},
+        zoom:{ pan:{enabled:true, mode:"x", onPan:onGesture, onPanComplete:onRangeChange},
+               zoom:{wheel:{enabled:true, modifierKey:"ctrl"}, pinch:{enabled:true}, mode:"x",
+                     onZoom:onGesture, onZoomComplete:onRangeChange},
                limits:{x:{}} }},
       scales:{
         x:{type:"linear", grid:{color:"#ffffff10"},
@@ -276,6 +283,25 @@ function applyWindow(){ chart.zoomScale("x", {min: win.from*1000, max: win.to*10
 function setLimits(){
   if(!extent || !extent.earliest) return;
   chart.options.plugins.zoom.limits.x = {min: extent.earliest*1000, max: extent.latest*1000};
+}
+function downsample(points, target=180){
+  // Average into uniform time buckets so dense recent (per-minute, 0.1°-stepped) data
+  // renders as smoothly as the sparse hourly history — no more jagged half.
+  if(points.length <= target) return points;
+  const x0 = points[0].x, x1 = points[points.length-1].x, bw = ((x1 - x0) || 1) / target;
+  const buckets = new Map();
+  for(const p of points){
+    const b = Math.floor((p.x - x0) / bw);
+    let a = buckets.get(b); if(!a){ a = {sx:0, sy:0, n:0}; buckets.set(b, a); }
+    a.sx += p.x; a.sy += p.y; a.n++;
+  }
+  return [...buckets.values()].map(a => ({x:a.sx/a.n, y:a.sy/a.n})).sort((a,b)=>a.x-b.x);
+}
+function onGesture({chart}){          // fires DURING pan/zoom — refresh the window live (throttled)
+  activeToken = null;
+  win = {from: Math.round(chart.scales.x.min/1000), to: Math.round(chart.scales.x.max/1000)};
+  const t = Date.now();
+  if(t - lastFetch > 200){ lastFetch = t; loadWindow(); }
 }
 function renderHistory(r){
   extent = r.extent;
@@ -293,8 +319,8 @@ function renderHistory(r){
     h.push({x:p.ts*1000, y:p.humidity});
   }
   t.sort((a,b)=>a.x-b.x); h.sort((a,b)=>a.x-b.x);
-  chart.data.datasets[0].data = t;
-  chart.data.datasets[1].data = h;
+  chart.data.datasets[0].data = downsample(t);
+  chart.data.datasets[1].data = downsample(h);
   setLimits();
   chart.update("none");
 }
@@ -393,6 +419,15 @@ window.addEventListener("load", ()=>{
   Chart.register(window.ChartZoom || window['chartjs-plugin-zoom']);
   chart = mkChart($("chart"));
   window.chart = chart;
+  // Horizontal two-finger scroll pans; plain vertical scroll is left to the page.
+  $("chart").addEventListener("wheel", (e)=>{
+    if(e.ctrlKey || e.metaKey) return;                 // modifier + wheel -> let the plugin zoom
+    if(Math.abs(e.deltaX) > Math.abs(e.deltaY)){        // sideways scroll -> pan
+      e.preventDefault();
+      chart.pan({x: -e.deltaX}, undefined, "default");
+      onGesture({chart});
+    }
+  }, {passive:false});
   refreshCurrent();
   setRange("24h");
   refreshGaps();
