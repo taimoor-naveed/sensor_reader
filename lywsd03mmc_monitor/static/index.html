@@ -291,6 +291,7 @@ function downsample(points, target=180){
   const x0 = points[0].x, x1 = points[points.length-1].x, bw = ((x1 - x0) || 1) / target;
   const buckets = new Map();
   for(const p of points){
+    if(!Number.isFinite(p.y)) continue;   // never average nulls/NaN as zero
     const b = Math.floor((p.x - x0) / bw);
     let a = buckets.get(b); if(!a){ a = {sx:0, sy:0, n:0}; buckets.set(b, a); }
     a.sx += p.x; a.sy += p.y; a.n++;
@@ -315,8 +316,9 @@ function renderHistory(r){
     h.push({x:b.hour_ts*1000, y:(b.min_hum+b.max_hum)/2});
   }
   for(const p of (r.points||[])){
-    t.push({x:p.ts*1000, y:p.temperature});
-    h.push({x:p.ts*1000, y:p.humidity});
+    // staggered adverts mean a reading row often has only one field; skip the nulls
+    if(p.temperature != null) t.push({x:p.ts*1000, y:p.temperature});
+    if(p.humidity != null)    h.push({x:p.ts*1000, y:p.humidity});
   }
   t.sort((a,b)=>a.x-b.x); h.sort((a,b)=>a.x-b.x);
   chart.data.datasets[0].data = downsample(t);
