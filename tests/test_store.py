@@ -107,6 +107,18 @@ def test_extent_spans_readings_and_history(tmp_path):
     assert ext["latest"] == 4980   # 5000 floored to minute
 
 
+def test_history_window_dedupes_overlap_preferring_live(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    h = 100000 - (100000 % 3600)
+    s.add_history(h, 10.0, 12.0, 30, 35)              # device history for this hour
+    s.add_reading(h + 60, 20.0, 50.0, 90, -60)        # live readings, same hour
+    s.add_reading(h + 120, 24.0, 55.0, 90, -60)
+    win = s.history_window(h - 3 * 86400, h + 3600)   # >48h -> hourly bands
+    at_h = [b for b in win["bands"] if b["hour_ts"] == h]
+    assert len(at_h) == 1                              # no duplicate band for the overlapping hour
+    assert at_h[0]["min_temp"] == 20.0 and at_h[0]["max_temp"] == 24.0  # live rollup wins
+
+
 def test_history_window_raw_vs_bands(tmp_path):
     s = Store(str(tmp_path / "t.db"))
     s.add_reading(1000, 20.0, 40.0, 90, -60)

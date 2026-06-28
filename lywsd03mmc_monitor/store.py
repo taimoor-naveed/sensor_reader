@@ -177,6 +177,11 @@ class Store:
         if end - start <= 48 * 3600:
             return {"points": self.readings_between(start, end),
                     "bands": self.history_between(start, end)}
-        bands = self.hourly_rollup(start, end) + self.history_between(start, end)
-        bands.sort(key=lambda b: b["hour_ts"])
+        # Wide view = hourly bands. An hour may be covered by BOTH our live rollup and the
+        # device's stored history; prefer the live rollup (so zoomed-out matches zoomed-in)
+        # and let device history fill only the hours we never observed live — one band per hour.
+        by_hour = {b["hour_ts"]: b for b in self.history_between(start, end)}
+        for b in self.hourly_rollup(start, end):
+            by_hour[b["hour_ts"]] = b
+        bands = sorted(by_hour.values(), key=lambda b: b["hour_ts"])
         return {"points": [], "bands": bands}
