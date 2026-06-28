@@ -32,6 +32,26 @@ def test_handle_detection_updates_state_and_store(tmp_path):
     assert len(store.readings_between(0, 2000)) == 1
 
 
+def test_handle_detection_dedupes_repeated_counter(tmp_path):
+    store = Store(str(tmp_path / "t.db"))
+    state = LiveState(150, 15)
+    clock = [1000.0]
+    sc = Scanner(b"\x00" * 16, store, state, now_fn=lambda: clock[0])
+    pkt = bytes.fromhex("50305b05034c94b438c1a40d10041001ea01")      # counter 0x03
+    pkt_new = bytes.fromhex("50305b05044c94b438c1a40d10041001ea01")  # counter 0x04, same reading
+
+    sc.handle_detection(FakeDevice("AA"), FakeAdv({SERVICE_UUID: pkt}, -50))
+    assert state.snapshot(clock[0])["temperature_ts"] == 1000.0
+
+    clock[0] = 1010.0
+    sc.handle_detection(FakeDevice("AA"), FakeAdv({SERVICE_UUID: pkt}, -50))   # duplicate counter
+    assert state.snapshot(clock[0])["temperature_ts"] == 1000.0   # NOT reset by the duplicate
+
+    clock[0] = 1020.0
+    sc.handle_detection(FakeDevice("AA"), FakeAdv({SERVICE_UUID: pkt_new}, -50))  # new counter
+    assert state.snapshot(clock[0])["temperature_ts"] == 1020.0   # reset by the new packet
+
+
 def test_handle_detection_ignores_other_service_data(tmp_path):
     store = Store(str(tmp_path / "t.db"))
     state = LiveState(150, 15)

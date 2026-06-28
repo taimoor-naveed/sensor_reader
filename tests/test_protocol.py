@@ -106,3 +106,12 @@ def test_voltage_to_percent_curve_and_clamp():
     assert voltage_to_percent(3.04) == 94
     assert voltage_to_percent(3.6) == 100   # clamp high
     assert voltage_to_percent(1.8) == 0     # clamp low
+
+
+def test_frame_counter():
+    from lywsd03mmc_monitor.protocol import frame_counter
+    # real encrypted capture: byte 4 (after 5858 5b05) is the counter = 0x37
+    assert frame_counter(bytes.fromhex("58585b0537e3821838c1a42d5577e6bb0b00002627c930")) == 0x37
+    # plaintext sample: counter byte = 0x03
+    assert frame_counter(bytes.fromhex("50305b05034c94b438c1a40d10041001ea01")) == 0x03
+    assert frame_counter(b"\x01\x02") is None   # too short

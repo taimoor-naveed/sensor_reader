@@ -137,13 +137,16 @@ def test_offline_state_shows(pw):
         page.close()
 
 
-def test_no_gap_banner_hidden_when_no_gaps(pw):
+def test_fetch_button_always_visible_and_neutral_without_gaps(pw):
     p, browser = pw
     with LiveServer(build_app("normal")) as srv:
         page = _desktop_page(browser)
         page.goto(srv.url, wait_until="networkidle")
         page.wait_for_timeout(800)               # let refreshGaps run
-        assert page.is_hidden("#gapWrap")
+        assert page.is_visible("#gapWrap")        # fetch control is always available
+        assert page.is_visible("#fillBtn")
+        # neutral (no warning state) when there are no gaps
+        assert page.evaluate("()=>document.querySelector('#gapWrap').classList.contains('gap')") is False
         page.close()
 
 
@@ -155,7 +158,7 @@ def test_gap_fill_touch_flow(pw):
         page = ctx.new_page()
         page.goto(srv.url, wait_until="networkidle")
         page.wait_for_selector("#gapWrap", state="visible")
-        assert "fillable" in page.inner_text("#gapFillable")
+        assert "missing" in page.inner_text("#gapFillable")
         page.tap("#fillBtn")                     # touch, not click
         page.wait_for_function(
             "document.querySelector('#fillProgressText').textContent.includes('Filled')",
@@ -173,8 +176,9 @@ def test_backfill_clears_fillable_after_fill(pw):
         page.wait_for_function(
             "document.querySelector('#fillProgressText').textContent.includes('Filled')",
             timeout=8000)
-        # all fillable gaps resolved -> banner clears
-        page.wait_for_selector("#gapWrap", state="hidden", timeout=5000)
+        # all gaps resolved -> card returns to neutral (loses the 'gap' warning class)
+        page.wait_for_function(
+            "!document.querySelector('#gapWrap').classList.contains('gap')", timeout=5000)
         page.close()
 
 
@@ -190,5 +194,5 @@ def test_backfill_failure_reenables_button(pw):
         page.wait_for_function(
             "document.querySelector('#fillBtn') && document.querySelector('#fillBtn').disabled === false",
             timeout=8000)
-        assert page.inner_text("#fillBtn") == "Fill from sensor"
+        assert "Fetch from sensor" in page.inner_text("#fillBtn")
         page.close()

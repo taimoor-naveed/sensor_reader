@@ -78,6 +78,16 @@ def parse_advertisement(service_data: bytes, bindkey: bytes) -> Reading | None:
     return _parse_payload(payload)
 
 
+def frame_counter(service_data: bytes) -> int | None:
+    """MiBeacon frame counter: the 1-byte packet sequence number right after the
+    frame-control (2 bytes) and product id (2 bytes). It increments on every NEW
+    packet the device emits, so identical consecutive values mark a re-delivered
+    duplicate of the same broadcast."""
+    if len(service_data) < 5:
+        return None
+    return service_data[4]
+
+
 def decrypt_payload(data: bytes, mac: bytes, bindkey: bytes, payload_start: int) -> bytes | None:
     if len(data) < payload_start + 7:
         return None

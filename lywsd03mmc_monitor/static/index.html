@@ -52,10 +52,11 @@
   .today{font-size:24px;font-weight:700;margin-top:10px;display:flex;align-items:baseline;gap:8px}
   .today .hi{color:var(--accent2)} .today .lo{color:#7aa7ff}
   /* gap banner */
-  .gapcard{margin-top:14px;border:1px solid #ffb45440;background:#ffb4540e;border-radius:var(--radius);padding:16px}
-  .gaprow{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-  .gapfill{font-size:13px;color:#ffca7a}
-  .gapunrec{font-size:11.5px;color:var(--muted2);margin-top:8px}
+  .gapcard{margin-top:14px;border:1px solid #ffffff10;background:linear-gradient(160deg,var(--card1),var(--card2));border-radius:var(--radius);padding:16px}
+  .gapcard.gap{border-color:#ffb45440;background:#ffb4540e}
+  .gaprow{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  .gapfill{font-size:13px;color:var(--muted)}
+  .gapcard.gap .gapfill{color:#ffca7a}
   .fillbtn{background:linear-gradient(120deg,var(--accent),#7aa7ff);color:#04222e;border:none;
        border-radius:999px;padding:7px 15px;font-size:12.5px;font-weight:600;cursor:pointer;min-height:36px}
   .progress{margin-top:12px}
@@ -128,10 +129,10 @@
     </div>
   </div>
 
-  <div class="gapcard" id="gapWrap" style="display:none">
+  <div class="gapcard" id="gapWrap">
     <div class="gaprow">
-      <span class="gapfill" id="gapFillable"></span>
-      <button class="fillbtn" id="fillBtn">Fill from sensor</button>
+      <span class="gapfill" id="gapFillable">Pull the sensor's stored history</span>
+      <button class="fillbtn" id="fillBtn">⤓ Fetch from sensor</button>
     </div>
     <div class="progress" id="fillProgressWrap" style="display:none">
       <div class="ptext" id="fillProgressText">Connecting…</div>
@@ -328,14 +329,13 @@ async function refreshGaps(){
     const r = await (await fetch(`/api/gaps?range=week`)).json();
     gapState = r;
     const f = r.fillable || [];
-    if(!f.length){                       // only surface actually-fillable gaps
-      $("gapWrap").style.display = "none";
-      $("gapFillable").textContent = "";
-      return;
+    if(f.length){
+      $("gapWrap").classList.add("gap");
+      $("gapFillable").textContent = `${f.length} hour(s) missing in the last ~2 days`;
+    } else {
+      $("gapWrap").classList.remove("gap");
+      $("gapFillable").textContent = "Pull the sensor's stored history";
     }
-    $("gapWrap").style.display = "block";
-    $("gapFillable").textContent = `${f.length} hour(s) fillable`;
-    $("fillBtn").style.display = "";
   }catch(e){}
 }
 function pollBackfill(){
@@ -362,27 +362,31 @@ function pollBackfill(){
     }, 400);
   });
 }
-async function doFill(){
-  const f = gapState && gapState.fillable;
-  if(!f || !f.length) return;
+async function doFetch(){
+  // Always available: if a >1h gap is known, fetch exactly that range; otherwise pull
+  // the whole recoverable window so the device's stored history is synced on demand.
+  const f = (gapState && gapState.fillable) || [];
+  const now = Math.floor(Date.now()/1000);
+  const from = f.length ? f[0] : now - 7 * 86400;
+  const to   = f.length ? f[f.length - 1] + 3600 : now;
   $("fillBtn").disabled = true;
   $("fillProgressWrap").style.display = "block";
   $("fillProgressText").innerHTML = '<span class="spin"></span> Connecting…';
   $("fillProgressBar").style.width = "0%";
   try{
     const resp = await fetch("/api/backfill", {method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({from: f[0], to: f[f.length-1] + 3600})});
+      body: JSON.stringify({from, to})});
     if(resp.status === 409){ $("fillProgressText").textContent = "Sensor busy — try again"; }
-    else if(!resp.ok){ $("fillProgressText").textContent = "Backfill failed"; }
+    else if(!resp.ok){ $("fillProgressText").textContent = "Fetch failed"; }
     else { await pollBackfill(); }
-  }catch(e){ $("fillProgressText").textContent = "Backfill failed"; }
+  }catch(e){ $("fillProgressText").textContent = "Fetch failed"; }
   $("fillBtn").disabled = false;
   setTimeout(()=>{ $("fillProgressWrap").style.display = "none"; }, 1800);
 }
 
 /* ---------- wire up ---------- */
 $("updateBtn").addEventListener("click", doUpdate);
-$("fillBtn").addEventListener("click", doFill);
+$("fillBtn").addEventListener("click", doFetch);
 $("ranges").addEventListener("click", e=>{ if(e.target.tagName === "BUTTON") setRange(e.target.dataset.r); });
 
 window.addEventListener("load", ()=>{

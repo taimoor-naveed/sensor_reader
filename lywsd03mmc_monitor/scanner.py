@@ -9,6 +9,7 @@ class Scanner:
         self.now_fn = now_fn
         self.address = address
         self.last_device = None
+        self.last_counter = None
         self._bleak_scanner = None
 
     def handle_detection(self, device, advertisement_data) -> None:
@@ -16,9 +17,15 @@ class Scanner:
         raw = service_data.get(protocol.SERVICE_UUID)
         if raw is None:
             return
-        reading = protocol.parse_advertisement(bytes(raw), self.bindkey)
+        raw = bytes(raw)
+        reading = protocol.parse_advertisement(raw, self.bindkey)
         if reading is None:
             return
+        self.last_device = device  # keep a fresh device handle for on-demand GATT
+        counter = protocol.frame_counter(raw)
+        if counter is not None and counter == self.last_counter:
+            return  # re-delivered duplicate of the same packet — don't reset timers
+        self.last_counter = counter
         now = self.now_fn()
         rssi = getattr(advertisement_data, "rssi", None)
         self.state.update(reading, rssi, now)
@@ -26,7 +33,6 @@ class Scanner:
             int(now), reading.temperature, reading.humidity,
             reading.battery, rssi,
         )
-        self.last_device = device
 
     async def start(self) -> None:
         from bleak import BleakScanner
