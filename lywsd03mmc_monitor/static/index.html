@@ -163,7 +163,7 @@
 const $ = id => document.getElementById(id);
 let lastSnap = {};
 let chart = null, win = null, extent = null, activeToken = "24h", serverNow = 0;
-let memT = [], memH = [], renderPending = false;
+let memT = [], memH = [], renderPending = false, loadedFrom = 0, loadedTo = 0, ensureTimer = null;
 const COLORS = {temp:"#9be4ff", hum:"#e879c9"};
 const IS_TOUCH = window.matchMedia("(pointer: coarse)").matches;
 
@@ -311,9 +311,8 @@ function smooth(points, halfMs){
 }
 // Data lives in memory (memT/memH). Pan/zoom re-renders the visible slice CLIENT-SIDE
 // (no network), so the graph updates every frame instead of waiting for a fetch.
-async function fetchData(){
-  let r; try{ r = await (await fetch(`/api/history?range=7d`)).json(); }catch(e){ return; }
-  extent = r.extent; serverNow = r.to;
+function ingest(r){          // store a fetched window in memory (merged, deduped, null-filtered)
+  serverNow = r.now ?? r.to; extent = r.extent; loadedFrom = r.from; loadedTo = r.to;
   const rawHours = new Set((r.points||[]).map(p => Math.floor(p.ts/3600)));
   const T = [], H = [];
   for(const b of (r.bands||[])){          // device hourly history fills hours we never saw live
@@ -327,6 +326,20 @@ async function fetchData(){
   }
   T.sort((a,b)=>a.x-b.x); H.sort((a,b)=>a.x-b.x);
   memT = T; memH = H;
+}
+async function fetchRange(token){        // bootstrap / refresh the recent buffer (server-anchored)
+  let r; try{ r = await (await fetch(`/api/history?range=${token}`)).json(); }catch(e){ return; }
+  ingest(r);
+}
+async function loadSpan(from, to){       // load an explicit window into memory
+  let r; try{ r = await (await fetch(`/api/history?from=${Math.round(from)}&to=${Math.round(to)}`)).json(); }catch(e){ return; }
+  ingest(r);
+}
+async function ensure(from, to){         // make sure the buffer covers [from,to]; fetch (with margin) if not
+  if(loadedTo && from >= loadedFrom && to <= loadedTo) return false;
+  const margin = Math.max(to - from, 86400);
+  await loadSpan(from - margin, to + margin);
+  return true;
 }
 function renderVisible(){
   if(!win) return;
@@ -347,21 +360,31 @@ function onGesture({chart}){          // pan/zoom -> re-render the visible slice
   win = {from: Math.round(chart.scales.x.min/1000), to: Math.round(chart.scales.x.max/1000)};
   activeToken = null;
   document.querySelectorAll('#ranges button').forEach(b=>b.classList.remove("active"));
-  scheduleRender();
+  scheduleRender();      // instant: render what's already in memory
+  scheduleEnsure();      // debounced: if we panned past the buffer, load more then re-render
+}
+function scheduleEnsure(){
+  clearTimeout(ensureTimer);
+  ensureTimer = setTimeout(async ()=>{ if(win && await ensure(win.from, win.to)) renderVisible(); }, 250);
 }
 const RANGES = {"6h":21600, "24h":86400, "7d":604800};
 function rangeWindow(token){
   if(token === "all" && extent && extent.earliest) return {from: extent.earliest, to: extent.latest};
   return {from: serverNow - (RANGES[token] || 86400), to: serverNow};
 }
-function setRange(token){
+async function setRange(token){
   activeToken = token;
   document.querySelectorAll('#ranges button').forEach(b=>b.classList.toggle("active", b.dataset.r === token));
   win = rangeWindow(token);
   applyWindow();
+  await ensure(win.from, win.to);   // "All" (or any window beyond the buffer) loads on demand
   renderVisible();
 }
-async function reload(){ await fetchData(); if(activeToken) setRange(activeToken); else renderVisible(); }
+async function reload(){
+  await fetchRange("7d");
+  if(activeToken) await setRange(activeToken);             // re-anchor preset / reload "All"
+  else { await ensure(win.from, win.to); renderVisible(); }
+}
 
 /* ---------- gaps + backfill ---------- */
 let gapState = null;
@@ -444,14 +467,20 @@ window.addEventListener("load", async ()=>{
     }
   }, {passive:false});
   refreshCurrent();
-  await fetchData();
+  await fetchRange("7d");
   setRange("24h");
   refreshGaps();
   setInterval(refreshCurrent, 2000);
   setInterval(renderFreshness, 1000);
   setInterval(refreshGaps, 60000);
-  // periodically refresh the in-memory buffer with new readings (preserving the view)
-  setInterval(async ()=>{ await fetchData(); if(activeToken) setRange(activeToken); else renderVisible(); }, 15000);
+  // refresh recent data periodically, but only while viewing recent data so we don't
+  // clobber a buffer the user panned into older history
+  setInterval(async ()=>{
+    if(win && win.to >= serverNow - 60 && activeToken !== "all"){
+      await fetchRange("7d");
+      if(activeToken) setRange(activeToken); else renderVisible();
+    }
+  }, 15000);
 });
 </script>
 </body>

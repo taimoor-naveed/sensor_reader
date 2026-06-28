@@ -54,7 +54,7 @@ def create_app(store, state, now_fn, backfill_fn=None, update_fn=None) -> FastAP
                 start, end = now - span, now
         start, end = int(start), int(end)
         win = store.history_window(start, end)
-        return {"range": range or "custom", "from": start, "to": end,
+        return {"range": range or "custom", "from": start, "to": end, "now": now,
                 "points": win["points"], "bands": win["bands"], "extent": ext}
 
     @app.get("/api/gaps")
