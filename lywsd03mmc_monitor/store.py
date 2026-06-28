@@ -174,14 +174,9 @@ class Store:
         return {"earliest": row[0], "latest": row[1]}
 
     def history_window(self, start: int, end: int) -> dict:
-        if end - start <= 48 * 3600:
-            return {"points": self.readings_between(start, end),
-                    "bands": self.history_between(start, end)}
-        # Wide view = hourly bands. An hour may be covered by BOTH our live rollup and the
-        # device's stored history; prefer the live rollup (so zoomed-out matches zoomed-in)
-        # and let device history fill only the hours we never observed live — one band per hour.
-        by_hour = {b["hour_ts"]: b for b in self.history_between(start, end)}
-        for b in self.hourly_rollup(start, end):
-            by_hour[b["hour_ts"]] = b
-        bands = sorted(by_hour.values(), key=lambda b: b["hour_ts"])
-        return {"points": [], "bands": bands}
+        # Return raw per-minute readings + the device's hourly history for the window. The
+        # frontend holds this in memory and downsamples for display, so it can pan/zoom
+        # client-side without re-fetching. Overlap (an hour with both) is deduped in the
+        # frontend merge (live readings win per hour). Volume is bounded by the window width.
+        return {"points": self.readings_between(start, end),
+                "bands": self.history_between(start, end)}

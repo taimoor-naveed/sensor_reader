@@ -30,14 +30,17 @@ def test_history_day_returns_points(tmp_path):
     assert any(p["temperature"] == 20.0 for p in r["points"])
 
 
-def test_history_week_returns_bands(tmp_path):
+def test_history_week_returns_raw_points(tmp_path):
     now = 1_000_000
     store, state, client = _client(tmp_path, now=now)
     store.add_reading(now - 7200, 18.0, 30.0, 90, -60)
-    store.add_reading(now - 7100, 22.0, 36.0, 90, -60)  # same hour -> min/max band
+    store.add_reading(now - 7100, 22.0, 36.0, 90, -60)
+    store.add_history(now - 3 * 3600, 10.0, 12.0, 40, 45)
     r = client.get("/api/history?range=week").json()
-    assert r["points"] == []
-    assert any(b["min_temp"] == 18.0 and b["max_temp"] == 22.0 for b in r["bands"])
+    # wide window now returns raw readings (frontend downsamples) plus device history
+    assert any(p["temperature"] == 18.0 for p in r["points"])
+    assert any(b["min_temp"] == 10.0 for b in r["bands"])
+    assert r["extent"]["earliest"] is not None
 
 
 def test_history_from_to_window_and_extent(tmp_path):

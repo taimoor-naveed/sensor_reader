@@ -162,7 +162,8 @@
 <script>
 const $ = id => document.getElementById(id);
 let lastSnap = {};
-let chart = null, win = null, extent = null, fetchTimer = null, activeToken = "24h", lastFetch = 0;
+let chart = null, win = null, extent = null, activeToken = "24h", serverNow = 0;
+let memT = [], memH = [], renderPending = false;
 const COLORS = {temp:"#9be4ff", hum:"#e879c9"};
 const IS_TOUCH = window.matchMedia("(pointer: coarse)").matches;
 
@@ -241,7 +242,8 @@ function mkChart(canvas){
   const ctx = canvas.getContext("2d");
   const ds = (label, color, axis) => ({
     label, yAxisID:axis, data:[], borderColor:color, backgroundColor:gradient(ctx,color),
-    borderWidth:2, fill:true, cubicInterpolationMode:"monotone", pointRadius:0, spanGaps:true,
+    borderWidth:2, fill:true, cubicInterpolationMode:"monotone", pointRadius:0,
+    spanGaps: 90*60*1000,   // join across <90min gaps; break (empty area) for real gaps
   });
   const yAxis = (color, unit) => ({
     type:"linear", position:"left", stack:"panels", stackWeight:1, offset:true,
@@ -261,9 +263,9 @@ function mkChart(canvas){
         tooltip:{enabled: !IS_TOUCH, callbacks:{
           title: items => items.length ? new Date(items[0].parsed.x)
             .toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"}) : ""}},
-        zoom:{ pan:{enabled:true, mode:"x", onPan:onGesture, onPanComplete:onRangeChange},
+        zoom:{ pan:{enabled:true, mode:"x", onPan:onGesture, onPanComplete:onGesture},
                zoom:{wheel:{enabled:true, modifierKey:"ctrl"}, pinch:{enabled:true}, mode:"x",
-                     onZoom:onGesture, onZoomComplete:onRangeChange},
+                     onZoom:onGesture, onZoomComplete:onGesture},
                limits:{x:{}} }},
       scales:{
         x:{type:"time", grid:{color:"#ffffff10"},
@@ -307,60 +309,59 @@ function smooth(points, halfMs){
   }
   return out;
 }
-function onGesture({chart}){          // fires DURING pan/zoom — refresh the window live (throttled)
-  activeToken = null;
-  win = {from: Math.round(chart.scales.x.min/1000), to: Math.round(chart.scales.x.max/1000)};
-  const t = Date.now();
-  if(t - lastFetch > 200){ lastFetch = t; loadWindow(); }
-}
-function renderHistory(r){
-  extent = r.extent;
-  // Merge coarse hourly history (older) with fine live readings (recent). Raw readings
-  // win for any hour they cover, so the chart is full instead of a tiny recent cluster.
+// Data lives in memory (memT/memH). Pan/zoom re-renders the visible slice CLIENT-SIDE
+// (no network), so the graph updates every frame instead of waiting for a fetch.
+async function fetchData(){
+  let r; try{ r = await (await fetch(`/api/history?range=7d`)).json(); }catch(e){ return; }
+  extent = r.extent; serverNow = r.to;
   const rawHours = new Set((r.points||[]).map(p => Math.floor(p.ts/3600)));
-  const t = [], h = [];
-  for(const b of (r.bands||[])){
+  const T = [], H = [];
+  for(const b of (r.bands||[])){          // device hourly history fills hours we never saw live
     if(rawHours.has(Math.floor(b.hour_ts/3600))) continue;
-    t.push({x:b.hour_ts*1000, y:(b.min_temp+b.max_temp)/2});
-    h.push({x:b.hour_ts*1000, y:(b.min_hum+b.max_hum)/2});
+    T.push({x:b.hour_ts*1000, y:(b.min_temp+b.max_temp)/2});
+    H.push({x:b.hour_ts*1000, y:(b.min_hum+b.max_hum)/2});
   }
-  for(const p of (r.points||[])){
-    // staggered adverts mean a reading row often has only one field; skip the nulls
-    if(p.temperature != null) t.push({x:p.ts*1000, y:p.temperature});
-    if(p.humidity != null)    h.push({x:p.ts*1000, y:p.humidity});
+  for(const p of (r.points||[])){         // live readings (per-field; skip the staggered nulls)
+    if(p.temperature != null) T.push({x:p.ts*1000, y:p.temperature});
+    if(p.humidity != null)    H.push({x:p.ts*1000, y:p.humidity});
   }
-  t.sort((a,b)=>a.x-b.x); h.sort((a,b)=>a.x-b.x);
-  const dt = downsample(t), dh = downsample(h);
-  const span = win ? (win.to - win.from) * 1000 : (dt.length ? dt[dt.length-1].x - dt[0].x : 0);
-  const halfMs = span / 120;   // ~±1.5 downsample buckets -> light smoothing
-  chart.data.datasets[0].data = smooth(dt, halfMs);
-  chart.data.datasets[1].data = smooth(dh, halfMs);
+  T.sort((a,b)=>a.x-b.x); H.sort((a,b)=>a.x-b.x);
+  memT = T; memH = H;
+}
+function renderVisible(){
+  if(!win) return;
+  const lo = win.from*1000, hi = win.to*1000, pad = (hi - lo) * 0.15;
+  const slice = arr => arr.filter(p => p.x >= lo - pad && p.x <= hi + pad);
+  const halfMs = (hi - lo) / 120;   // light smoothing, scales with the zoom level
+  chart.data.datasets[0].data = smooth(downsample(slice(memT)), halfMs);
+  chart.data.datasets[1].data = smooth(downsample(slice(memH)), halfMs);
   setLimits();
   chart.update("none");
 }
-async function loadRange(token){       // server-anchored preset (clock-independent)
-  let r; try{ r = await (await fetch(`/api/history?range=${token}`)).json(); }catch(e){ return; }
-  win = {from: r.from, to: r.to};
-  renderHistory(r); applyWindow();
+function scheduleRender(){           // coalesce rapid gesture events into one render per frame
+  if(renderPending) return;
+  renderPending = true;
+  requestAnimationFrame(()=>{ renderPending = false; renderVisible(); });
 }
-async function loadWindow(){           // explicit window (after pan/zoom or data change)
-  if(!win) return;
-  let r; try{ r = await (await fetch(`/api/history?from=${win.from}&to=${win.to}`)).json(); }catch(e){ return; }
-  renderHistory(r);
-}
-function reload(){ return activeToken ? loadRange(activeToken) : loadWindow(); }
-function onRangeChange({chart}){
-  const x = chart.scales.x;
-  win = {from: Math.round(x.min/1000), to: Math.round(x.max/1000)};
-  activeToken = null;                  // now a custom window
+function onGesture({chart}){          // pan/zoom -> re-render the visible slice from memory
+  win = {from: Math.round(chart.scales.x.min/1000), to: Math.round(chart.scales.x.max/1000)};
+  activeToken = null;
   document.querySelectorAll('#ranges button').forEach(b=>b.classList.remove("active"));
-  clearTimeout(fetchTimer); fetchTimer = setTimeout(loadWindow, 250);
+  scheduleRender();
 }
-function setRange(r){
-  activeToken = r;
-  document.querySelectorAll('#ranges button').forEach(b=>b.classList.toggle("active", b.dataset.r === r));
-  loadRange(r);
+const RANGES = {"6h":21600, "24h":86400, "7d":604800};
+function rangeWindow(token){
+  if(token === "all" && extent && extent.earliest) return {from: extent.earliest, to: extent.latest};
+  return {from: serverNow - (RANGES[token] || 86400), to: serverNow};
 }
+function setRange(token){
+  activeToken = token;
+  document.querySelectorAll('#ranges button').forEach(b=>b.classList.toggle("active", b.dataset.r === token));
+  win = rangeWindow(token);
+  applyWindow();
+  renderVisible();
+}
+async function reload(){ await fetchData(); if(activeToken) setRange(activeToken); else renderVisible(); }
 
 /* ---------- gaps + backfill ---------- */
 let gapState = null;
@@ -429,7 +430,7 @@ $("updateBtn").addEventListener("click", doUpdate);
 $("fillBtn").addEventListener("click", doFetch);
 $("ranges").addEventListener("click", e=>{ if(e.target.tagName === "BUTTON") setRange(e.target.dataset.r); });
 
-window.addEventListener("load", ()=>{
+window.addEventListener("load", async ()=>{
   Chart.register(window.ChartZoom || window['chartjs-plugin-zoom']);
   chart = mkChart($("chart"));
   window.chart = chart;
@@ -443,11 +444,14 @@ window.addEventListener("load", ()=>{
     }
   }, {passive:false});
   refreshCurrent();
+  await fetchData();
   setRange("24h");
   refreshGaps();
   setInterval(refreshCurrent, 2000);
   setInterval(renderFreshness, 1000);
   setInterval(refreshGaps, 60000);
+  // periodically refresh the in-memory buffer with new readings (preserving the view)
+  setInterval(async ()=>{ await fetchData(); if(activeToken) setRange(activeToken); else renderVisible(); }, 15000);
 });
 </script>
 </body>
