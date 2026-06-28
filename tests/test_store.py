@@ -66,6 +66,22 @@ def test_classify_gaps_none_boot_all_fillable(tmp_path):
     assert res["fillable"] == [0, 3600]
 
 
+def test_classify_gaps_ignores_single_isolated_hour(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    s.add_reading(60, 20.0, 40.0, 90, -60)            # hour 0 has data
+    s.add_reading(2 * 3600 + 60, 21.0, 41.0, 90, -60)  # hour 2 has data; hour 1 isolated
+    res = s.classify_gaps(0, 3 * 3600, boot_epoch=None)
+    assert res["fillable"] == []   # a single 1-hour hole is not a fillable gap
+
+
+def test_classify_gaps_reports_multi_hour_gap(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    s.add_reading(60, 20.0, 40.0, 90, -60)            # hour 0
+    s.add_reading(4 * 3600 + 60, 21.0, 41.0, 90, -60)  # hour 4; hours 1,2,3 missing (3h gap)
+    res = s.classify_gaps(0, 5 * 3600, boot_epoch=None)
+    assert res["fillable"] == [3600, 7200, 10800]
+
+
 def test_today_high_low_picks_extremes_with_ts(tmp_path):
     s = Store(str(tmp_path / "t.db"))
     s.add_reading(100, 20.0, 40.0, 90, -60)

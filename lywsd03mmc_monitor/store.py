@@ -22,6 +22,25 @@ CREATE TABLE IF NOT EXISTS meta (
 """
 
 
+def _gaps_longer_than_one_hour(hours: list[int]) -> list[int]:
+    """Keep only hours that belong to a run of >= 2 consecutive empty hour-buckets
+    (a gap longer than one hour). Isolated single-hour holes are dropped."""
+    if not hours:
+        return []
+    hours = sorted(hours)
+    keep, run = [], [hours[0]]
+    for h in hours[1:]:
+        if h == run[-1] + 3600:
+            run.append(h)
+        else:
+            if len(run) >= 2:
+                keep.extend(run)
+            run = [h]
+    if len(run) >= 2:
+        keep.extend(run)
+    return keep
+
+
 class Store:
     def __init__(self, path: str):
         self.conn = sqlite3.connect(path, check_same_thread=False)
@@ -114,7 +133,10 @@ class Store:
         return int(row[0]) if row else None
 
     def classify_gaps(self, start: int, end: int, boot_epoch) -> dict:
-        gaps = self.fillable_gaps(start, end)
+        # Only a contiguous stretch of MORE THAN ONE missing hour counts as a real,
+        # fillable gap; isolated single-hour holes are ignored (the chart just
+        # interpolates across them).
+        gaps = _gaps_longer_than_one_hour(self.fillable_gaps(start, end))
         if boot_epoch is None:
             return {"fillable": gaps, "unrecoverable": []}
         # The device only logs COMPLETED hours, so its earliest record is the hour
