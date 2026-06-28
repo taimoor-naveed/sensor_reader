@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Sensor</title>
 <script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="/static/vendor/hammer.min.js"></script>
 <script src="/static/vendor/chartjs-plugin-zoom.min.js"></script>
 <style>
@@ -233,12 +234,6 @@ function gradient(ctx, color){
   const g = ctx.createLinearGradient(0,0,0,240);
   g.addColorStop(0, color+"44"); g.addColorStop(1, color+"00"); return g;
 }
-function fmtTick(value){
-  const span = (this.max - this.min);
-  const d = new Date(value);
-  if(span <= 36*3600*1000) return d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
-  return d.toLocaleDateString([], {month:"short",day:"numeric"});
-}
 // ONE chart, TWO stacked y-axes (temp panel on top, humidity below) sharing a single
 // x-axis. Pan/zoom is on the x-axis only, so both panels move together natively — no
 // cross-chart sync code needed (that's why we use one chart, not two).
@@ -271,8 +266,9 @@ function mkChart(canvas){
                      onZoom:onGesture, onZoomComplete:onRangeChange},
                limits:{x:{}} }},
       scales:{
-        x:{type:"linear", grid:{color:"#ffffff10"},
-           ticks:{color:"#7f90a8", maxTicksLimit:8, autoSkip:true, callback:fmtTick}},
+        x:{type:"time", grid:{color:"#ffffff10"},
+           time:{displayFormats:{minute:"HH:mm", hour:"HH:mm", day:"MMM d"}},
+           ticks:{color:"#7f90a8", maxTicksLimit:8, autoSkip:true, major:{enabled:true}}},
         // first-declared stacked axis renders at the bottom, so declare humidity first
         // to put the temperature panel on top.
         yHum:  yAxis(COLORS.hum,  "%"),
@@ -298,6 +294,19 @@ function downsample(points, target=180){
   }
   return [...buckets.values()].map(a => ({x:a.sx/a.n, y:a.sy/a.n})).sort((a,b)=>a.x-b.x);
 }
+function smooth(points, halfMs){
+  // Light time-window moving average: smooths the dense (live) region's per-minute
+  // 0.1°-step noise while leaving sparse hourly history essentially untouched.
+  if(points.length < 3 || !halfMs) return points;
+  const out = [];
+  for(let i=0;i<points.length;i++){
+    const x = points[i].x; let sy = 0, n = 0;
+    for(let j=i;     j>=0           && x - points[j].x <= halfMs; j--){ sy += points[j].y; n++; }
+    for(let j=i+1;   j<points.length && points[j].x - x <= halfMs; j++){ sy += points[j].y; n++; }
+    out.push({x, y: sy/n});
+  }
+  return out;
+}
 function onGesture({chart}){          // fires DURING pan/zoom — refresh the window live (throttled)
   activeToken = null;
   win = {from: Math.round(chart.scales.x.min/1000), to: Math.round(chart.scales.x.max/1000)};
@@ -321,8 +330,11 @@ function renderHistory(r){
     if(p.humidity != null)    h.push({x:p.ts*1000, y:p.humidity});
   }
   t.sort((a,b)=>a.x-b.x); h.sort((a,b)=>a.x-b.x);
-  chart.data.datasets[0].data = downsample(t);
-  chart.data.datasets[1].data = downsample(h);
+  const dt = downsample(t), dh = downsample(h);
+  const span = win ? (win.to - win.from) * 1000 : (dt.length ? dt[dt.length-1].x - dt[0].x : 0);
+  const halfMs = span / 120;   // ~±1.5 downsample buckets -> light smoothing
+  chart.data.datasets[0].data = smooth(dt, halfMs);
+  chart.data.datasets[1].data = smooth(dh, halfMs);
   setLimits();
   chart.update("none");
 }
