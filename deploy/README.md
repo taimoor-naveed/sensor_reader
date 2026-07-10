@@ -1,19 +1,23 @@
-# Deploying to the Windows home PC
+# Deploying to a Windows PC
 
 > Full process, reboot behavior, and troubleshooting: **[`docs/deployment.md`](../docs/deployment.md)**.
 > This file is the quick reference that lives next to the scripts.
 
-The app runs on **<host>** (`<user>@<host>`, Windows 10) as a background service that
-autostarts at logon and serves the dashboard on the LAN at **http://<host>:8787**.
+The app runs on a Windows machine as a background service that autostarts at logon and
+serves the dashboard on the LAN at `http://<host>:8787`.
+
+**Target machine details live in `deploy/local.env`** (gitignored — copy
+[`local.env.example`](local.env.example) and fill in your host). Site-specific notes:
+`docs/deployment.local.md` (also gitignored).
 
 ## Push code / updates
 
-From the repo root on the Mac:
+From the repo root:
 
 ```bash
 deploy/push.sh
-# or target a different host/user:
-REMOTE=<user>@<lan-ip> deploy/push.sh
+# or target a different host/user for one run:
+REMOTE=user@host deploy/push.sh
 ```
 
 Each run (first run bootstraps, later runs are incremental):
@@ -37,18 +41,19 @@ Each run (first run bootstraps, later runs are incremental):
 
 - **Scheduled task `sensor_reader`** runs `…\.venv\Scripts\pythonw.exe -m lywsd03mmc_monitor`
   (no console window) with a logon trigger and auto-restart on crash.
-- **For true start-at-boot with no one logged in, enable Windows auto-login for `Home`.**
+- **For true start-at-boot with no one logged in, enable Windows auto-login for the app user.**
   BLE (WinRT) needs an interactive desktop session, so the task triggers at logon, not in the
   session-0 service context. With auto-login, logon happens at boot and the app comes up.
 - **Logs:** `C:\Users\<user>\sensor_reader\app.log` (rotating, 1 MB × 3). The app logs only to
   this file — it never writes to the console (required for `pythonw`).
 - **Firewall:** push opens inbound TCP 8787 for LAN access (best effort; needs admin once).
 
-## One-time prerequisites (already set up)
+## One-time prerequisites
 
-- Python 3.12 at `C:\Users\<user>\Python312` (python.org silent install — winget's source was broken).
-- Passwordless SSH key auth for `<user>@<host>`.
-- A Bluetooth LE radio (Intel Wireless Bluetooth).
+- Python 3.x on the target (python.org per-user silent install works without admin; point
+  `WIN_PY` in `local.env` at it if it isn't on `PATH`).
+- Passwordless SSH key auth to the target (Windows OpenSSH server).
+- A Bluetooth LE radio.
 
 ## Managing the service on the PC
 

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 #
-# Deploy / push the sensor_reader app to the Windows home PC over SSH.
+# Deploy / push the sensor_reader app to a Windows machine over SSH.
+#
+# Machine-specific target info (host, user, paths) lives in deploy/local.env —
+# copy deploy/local.env.example and fill it in. local.env is gitignored, so the
+# repo itself carries no private network details.
 #
 # First run does a full bootstrap (creates the dir, venv, installs deps, registers
 # the startup task). Every later run is an incremental push: it stops the running
@@ -8,14 +12,27 @@
 # sensor.db on the target are never overwritten.
 #
 # Usage:   deploy/push.sh
-# Override target:  REMOTE=<user>@<lan-ip> deploy/push.sh
+# Override target:  REMOTE=user@host deploy/push.sh
 #
 set -euo pipefail
 
-REMOTE="${REMOTE:-<user>@<host>}"
-WIN_DIR='C:\Users\<user>\sensor_reader'        # native Windows path (for cmd)
-SCP_DIR='C:/Users/<user>/sensor_reader'        # forward-slash path (for scp)
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Machine-specific settings (gitignored); env vars set by the caller win.
+if [ -f "$ROOT/deploy/local.env" ]; then
+  _remote="${REMOTE:-}" _win_user="${WIN_USER:-}" _win_dir="${WIN_DIR:-}" _win_py="${WIN_PY:-}"
+  # shellcheck source=/dev/null
+  . "$ROOT/deploy/local.env"
+  REMOTE="${_remote:-${REMOTE:-}}"; WIN_USER="${_win_user:-${WIN_USER:-}}"
+  WIN_DIR="${_win_dir:-${WIN_DIR:-}}"; WIN_PY="${_win_py:-${WIN_PY:-}}"
+fi
+
+REMOTE="${REMOTE:?set REMOTE (user@host) or create deploy/local.env from deploy/local.env.example}"
+WIN_USER="${WIN_USER:-${REMOTE%%@*}}"                          # Windows profile name; default: the ssh user
+WIN_DIR="${WIN_DIR:-C:\\Users\\${WIN_USER}\\sensor_reader}"    # native Windows path (for cmd)
+SCP_DIR="$(printf '%s' "$WIN_DIR" | tr '\\' '/')"              # forward-slash path (for scp)
+WIN_PY="${WIN_PY:-python}"                                     # python used to bootstrap the venv
+HOST="${REMOTE#*@}"
 
 strip_ssh_noise() { grep -v "post-quantum\|store now\|may need to be upgraded\|openssh.com/pq\|vulnerable" || true; }
 
@@ -43,7 +60,7 @@ else
 fi
 
 echo "==> running remote update (stop / venv / deps / task / start)"
-ssh "$REMOTE" "cd /d \"$WIN_DIR\" && remote-update.bat" 2>&1 | strip_ssh_noise | tr -d '\r'
+ssh "$REMOTE" "cd /d \"$WIN_DIR\" && remote-update.bat \"$WIN_PY\"" 2>&1 | strip_ssh_noise | tr -d '\r'
 
 echo "==> verifying the app responds"
 ok=""
@@ -54,7 +71,7 @@ for i in 1 2 3 4 5 6; do
   fi
 done
 if [ -n "$ok" ]; then
-  echo "==> SUCCESS: app is serving on the target (http://<host>:8787)"
+  echo "==> SUCCESS: app is serving on the target (http://$HOST:8787)"
 else
   echo "!!! app did not respond yet; check the log:"
   echo "    ssh $REMOTE \"type \\\"$WIN_DIR\\app.log\\\"\""

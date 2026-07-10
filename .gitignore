@@ -1,5 +1,9 @@
 config.toml
 *.db
+
+# Machine-specific / private site info (kept local, never pushed)
+deploy/local.env
+docs/deployment.local.md
 *.db-wal
 *.db-shm
 __pycache__/

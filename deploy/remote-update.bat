@@ -2,9 +2,11 @@
 REM Runs ON the Windows machine (in the deploy dir) after push.sh extracts new code.
 REM Stops the old instance, ensures the venv + deps, (re)registers the startup task, relaunches.
 REM The app runs under pythonw.exe (no console) and logs to app.log via file logging in the app.
+REM Arg 1 (optional): python.exe used to create the venv; defaults to `python` on PATH.
 setlocal
 cd /d "%~dp0"
-set "PY=C:\Users\<user>\Python312\python.exe"
+set "PY=%~1"
+if "%PY%"=="" set "PY=python"
 
 echo [1/5] Stopping any running instance...
 powershell -NoProfile -Command "Get-Process python,pythonw -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path -like '*sensor_reader*' } | Stop-Process -Force" 2>nul
