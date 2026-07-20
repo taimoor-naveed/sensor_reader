@@ -107,6 +107,76 @@ def test_extent_spans_readings_and_history(tmp_path):
     assert ext["latest"] == 4980   # 5000 floored to minute
 
 
+def test_pick_bucket_sizes():
+    from lywsd03mmc_monitor.store import pick_bucket
+    assert pick_bucket(21600) == 120        # 6h -> 180 pts
+    assert pick_bucket(86400) == 300        # 24h -> 288 pts
+    assert pick_bucket(604800) == 1800      # 7d -> 336 pts
+    assert pick_bucket(2592000) == 10800    # 30d -> 240 pts
+    assert pick_bucket(365 * 86400) == 86400  # capped at 1-day buckets
+
+
+def test_aggregated_series_avg_min_max(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    base = 1_700_000_000 - 1_700_000_000 % 300
+    s.add_reading(base + 0, 20.0, 40.0, 90, -60)
+    s.add_reading(base + 60, 22.0, 44.0, 90, -60)
+    out = s.aggregated_series(base, base + 300, 300)
+    row = out[0]
+    assert row["t"] == base
+    assert row["temp"] == 21.0 and row["temp_min"] == 20.0 and row["temp_max"] == 22.0
+    assert row["hum"] == 42.0
+
+
+def test_aggregated_series_gap_is_null(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    base = 1_700_000_000 - 1_700_000_000 % 300
+    s.add_reading(base, 20.0, 40.0, 90, -60)
+    s.add_reading(base + 900, 21.0, 41.0, 90, -60)
+    out = s.aggregated_series(base, base + 1200, 300)
+    assert [r["temp"] for r in out][:4] == [20.0, None, None, 21.0]
+
+
+def test_aggregated_series_history_fallback_subhour(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    hour = 1_700_000_000 - 1_700_000_000 % 3600
+    s.add_history(hour, 18.0, 20.0, 40, 50)
+    out = s.aggregated_series(hour, hour + 3600 - 1, 300)
+    # hourly record spreads across its sub-hour buckets (step look)
+    assert all(r["temp"] == 19.0 and r["temp_min"] == 18.0 and r["temp_max"] == 20.0
+               for r in out)
+    assert all(r["hum"] == 45.0 for r in out)
+
+
+def test_aggregated_series_history_fallback_coarse(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    hour = 1_700_000_000 - 1_700_000_000 % 10800
+    s.add_history(hour, 18.0, 20.0, 40, 50)
+    s.add_history(hour + 3600, 20.0, 22.0, 42, 52)
+    out = s.aggregated_series(hour, hour + 10800 - 1, 10800)
+    assert out[0]["temp"] == 20.0            # avg of hour-mids 19 and 21
+    assert out[0]["temp_min"] == 18.0 and out[0]["temp_max"] == 22.0
+
+
+def test_aggregated_series_readings_beat_history(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    hour = 1_700_000_000 - 1_700_000_000 % 3600
+    s.add_history(hour, 10.0, 12.0, 10, 12)
+    s.add_reading(hour + 60, 25.0, 55.0, 90, -60)
+    out = s.aggregated_series(hour, hour + 3600 - 1, 3600)
+    assert out[0]["temp"] == 25.0 and out[0]["hum"] == 55.0
+
+
+def test_aggregated_series_staggered_fields(tmp_path):
+    s = Store(str(tmp_path / "t.db"))
+    base = 1_700_000_000 - 1_700_000_000 % 300
+    s.add_reading(base, 20.0, None, 90, -60)
+    s.add_reading(base + 60, None, 44.0, 90, -60)
+    out = s.aggregated_series(base, base + 300, 300)
+    # AVG ignores per-field nulls from staggered advertisements
+    assert out[0]["temp"] == 20.0 and out[0]["hum"] == 44.0
+
+
 def test_history_window_returns_raw_and_history_for_any_span(tmp_path):
     s = Store(str(tmp_path / "t.db"))
     s.add_reading(1000, 20.0, 40.0, 90, -60)

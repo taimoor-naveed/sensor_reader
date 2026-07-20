@@ -22,6 +22,19 @@ CREATE TABLE IF NOT EXISTS meta (
 """
 
 
+NICE_BUCKETS = [120, 300, 600, 1800, 3600, 10800, 21600, 43200, 86400]
+
+
+def pick_bucket(span_seconds: int, target: int = 360) -> int:
+    """Smallest 'nice' bucket width that keeps a span under ~target points.
+    The 120 s floor tolerates the sensor's staggered per-field advertisements
+    (a bucket almost always catches at least one packet per field)."""
+    for b in NICE_BUCKETS:
+        if span_seconds / b <= target:
+            return b
+    return NICE_BUCKETS[-1]
+
+
 def _gaps_longer_than_one_hour(hours: list[int]) -> list[int]:
     """Keep only hours that belong to a run of >= 2 consecutive empty hour-buckets
     (a gap longer than one hour). Isolated single-hour holes are dropped."""
@@ -172,6 +185,67 @@ class Store:
             "(SELECT ts AS t FROM readings UNION ALL SELECT hour_ts FROM history)"
         ).fetchone()
         return {"earliest": row[0], "latest": row[1]}
+
+    def aggregated_series(self, start: int, end: int, bucket: int) -> list[dict]:
+        """One entry per bucket start covering [start, end], nulls where no data.
+        Live readings win per field per bucket; hours known only from the device's
+        hourly history fill the rest (value = hour midpoint, band = min..max).
+        A bucket with neither source keeps nulls so the chart breaks the line."""
+        first = start - (start % bucket)
+        read = {}
+        for r in self.conn.execute(
+            "SELECT (ts/?)*? AS b, AVG(temperature), MIN(temperature), MAX(temperature), "
+            "AVG(humidity), MIN(humidity), MAX(humidity) FROM readings "
+            "WHERE ts >= ? AND ts <= ? GROUP BY b", (bucket, bucket, first, end),
+        ):
+            read[r[0]] = r[1:]
+        hist = {}
+        for h in self.conn.execute(
+            "SELECT hour_ts, min_temp, max_temp, min_hum, max_hum FROM history "
+            "WHERE hour_ts >= ? AND hour_ts <= ?", (first - 3600, end),
+        ):
+            hist[h[0]] = h[1:]
+        hist_b = {}
+        if bucket >= 3600:
+            for hour_ts, (mnt, mxt, mnh, mxh) in hist.items():
+                b = hour_ts - (hour_ts % bucket)
+                acc = hist_b.setdefault(b, {"t": [], "tn": [], "tx": [],
+                                            "h": [], "hn": [], "hx": []})
+                if mnt is not None and mxt is not None:
+                    acc["t"].append((mnt + mxt) / 2)
+                    acc["tn"].append(mnt)
+                    acc["tx"].append(mxt)
+                if mnh is not None and mxh is not None:
+                    acc["h"].append((mnh + mxh) / 2)
+                    acc["hn"].append(mnh)
+                    acc["hx"].append(mxh)
+        out = []
+        b = first
+        while b <= end:
+            t = tn = tx = hu = hn = hx = None
+            if b in read:
+                t, tn, tx, hu, hn, hx = read[b]
+            if bucket >= 3600:
+                acc = hist_b.get(b)
+                if acc:
+                    if t is None and acc["t"]:
+                        t = sum(acc["t"]) / len(acc["t"])
+                        tn, tx = min(acc["tn"]), max(acc["tx"])
+                    if hu is None and acc["h"]:
+                        hu = sum(acc["h"]) / len(acc["h"])
+                        hn, hx = min(acc["hn"]), max(acc["hx"])
+            else:
+                row = hist.get(b - (b % 3600))
+                if row:
+                    mnt, mxt, mnh, mxh = row
+                    if t is None and mnt is not None and mxt is not None:
+                        t, tn, tx = (mnt + mxt) / 2, mnt, mxt
+                    if hu is None and mnh is not None and mxh is not None:
+                        hu, hn, hx = (mnh + mxh) / 2, mnh, mxh
+            out.append({"t": b, "temp": t, "temp_min": tn, "temp_max": tx,
+                        "hum": hu, "hum_min": hn, "hum_max": hx})
+            b += bucket
+        return out
 
     def history_window(self, start: int, end: int) -> dict:
         # Return raw per-minute readings + the device's hourly history for the window. The
