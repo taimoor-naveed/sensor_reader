@@ -122,7 +122,8 @@ def create_app(store, state, now_fn, backfill_fn=None, update_fn=None) -> FastAP
             finally:
                 app.state.gatt_busy = False
 
-        asyncio.create_task(run())
+        # keep a reference: a bare create_task() can be garbage-collected mid-run
+        app.state.backfill_task = asyncio.create_task(run())
         return {"started": True}
 
     @app.get("/api/backfill/status")

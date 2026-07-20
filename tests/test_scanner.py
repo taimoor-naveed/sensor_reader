@@ -52,6 +52,21 @@ def test_handle_detection_dedupes_repeated_counter(tmp_path):
     assert state.snapshot(clock[0])["temperature_ts"] == 1020.0   # reset by the new packet
 
 
+def test_handle_detection_filters_by_configured_address(tmp_path):
+    store = Store(str(tmp_path / "t.db"))
+    state = LiveState(150, 15)
+    sc = Scanner(b"\x00" * 16, store, state, now_fn=lambda: 1000.0,
+                 address="AA:BB:CC:DD:EE:FF")
+    data = bytes.fromhex("50305b05034c94b438c1a40d10041001ea01")
+
+    sc.handle_detection(FakeDevice("11:22:33:44:55:66"), FakeAdv({SERVICE_UUID: data}, -50))
+    assert state.snapshot(1000.0)["temperature"] is None       # other device ignored
+    assert store.readings_between(0, 2000) == []
+
+    sc.handle_detection(FakeDevice("aa:bb:cc:dd:ee:ff"), FakeAdv({SERVICE_UUID: data}, -50))
+    assert state.snapshot(1000.0)["temperature"] is not None   # case-insensitive match
+
+
 def test_handle_detection_ignores_other_service_data(tmp_path):
     store = Store(str(tmp_path / "t.db"))
     state = LiveState(150, 15)

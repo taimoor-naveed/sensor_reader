@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 
 import uvicorn
@@ -57,12 +58,25 @@ async def run(config_path: str = "config.toml") -> None:
     app = create_app(store, state, now_fn=time.time,
                      backfill_fn=backfill_fn, update_fn=update_fn)
 
-    await scanner.start()
+    async def start_scanner():
+        # A BLE failure (adapter off, permissions) must not take the dashboard
+        # down with it — keep serving stored data and retry in the background.
+        log = logging.getLogger("lywsd03mmc.scanner")
+        while True:
+            try:
+                await scanner.start()
+                return
+            except Exception:
+                log.exception("BLE scanner failed to start; retrying in 60s")
+                await asyncio.sleep(60)
+
     server = uvicorn.Server(uvicorn.Config(
         app, host=cfg.host, port=cfg.port, log_level="info", log_config=_log_config()))
+    scanner_task = asyncio.create_task(start_scanner())
     try:
         await server.serve()
     finally:
+        scanner_task.cancel()
         await scanner.stop()
 
 

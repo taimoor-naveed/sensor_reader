@@ -13,6 +13,10 @@ class Scanner:
         self._bleak_scanner = None
 
     def handle_detection(self, device, advertisement_data) -> None:
+        if self.address:
+            dev_addr = getattr(device, "address", None)
+            if dev_addr and dev_addr.lower() != self.address.lower():
+                return
         service_data = getattr(advertisement_data, "service_data", {}) or {}
         raw = service_data.get(protocol.SERVICE_UUID)
         if raw is None:
