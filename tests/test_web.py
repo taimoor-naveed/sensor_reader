@@ -21,36 +21,53 @@ def test_current_endpoint(tmp_path):
     assert r["comfort"] == "comfortable"
 
 
-def test_history_day_returns_points(tmp_path):
-    now = 100000
+def test_history_returns_aggregated_series(tmp_path):
+    now = 1_700_000_000
     store, state, client = _client(tmp_path, now=now)
     store.add_reading(now - 600, 20.0, 40.0, 90, -60)
-    r = client.get("/api/history?range=day").json()
-    assert r["range"] == "day"
-    assert any(p["temperature"] == 20.0 for p in r["points"])
+    r = client.get("/api/history?range=24h").json()
+    assert r["bucket"] == 300
+    assert any(p["temp"] == 20.0 for p in r["series"])
+    assert all(set(p) == {"t", "temp", "temp_min", "temp_max",
+                          "hum", "hum_min", "hum_max"} for p in r["series"])
 
 
-def test_history_week_returns_raw_points(tmp_path):
-    now = 1_000_000
+def test_history_merges_device_history(tmp_path):
+    now = 1_700_000_000
     store, state, client = _client(tmp_path, now=now)
-    store.add_reading(now - 7200, 18.0, 30.0, 90, -60)
-    store.add_reading(now - 7100, 22.0, 36.0, 90, -60)
-    store.add_history(now - 3 * 3600, 10.0, 12.0, 40, 45)
-    r = client.get("/api/history?range=week").json()
-    # wide window now returns raw readings (frontend downsamples) plus device history
-    assert any(p["temperature"] == 18.0 for p in r["points"])
-    assert any(b["min_temp"] == 10.0 for b in r["bands"])
-    assert r["extent"]["earliest"] is not None
+    hour = (now - 7200) - ((now - 7200) % 3600)
+    store.add_history(hour, 10.0, 12.0, 40, 45)
+    r = client.get("/api/history?range=6h").json()
+    assert any(p["temp"] == 11.0 for p in r["series"])
 
 
-def test_history_from_to_window_and_extent(tmp_path):
-    now = 1_000_000
+def test_history_all_uses_extent_and_stays_small(tmp_path):
+    now = 1_700_000_000
+    store, state, client = _client(tmp_path, now=now)
+    store.add_reading(now - 40 * 86400, 15.0, 30.0, 90, -60)
+    store.add_reading(now - 60, 25.0, 50.0, 90, -60)
+    r = client.get("/api/history?range=all").json()
+    assert r["from"] <= now - 40 * 86400
+    assert r["to"] == now
+    assert len(r["series"]) <= 400
+    temps = [p["temp"] for p in r["series"] if p["temp"] is not None]
+    assert 15.0 in temps and 25.0 in temps
+
+
+def test_history_empty_db(tmp_path):
+    store, state, client = _client(tmp_path, now=1_700_000_000)
+    r = client.get("/api/history?range=all").json()
+    assert r["extent"]["earliest"] is None
+    assert all(p["temp"] is None for p in r["series"])
+
+
+def test_history_custom_window(tmp_path):
+    now = 1_700_000_000
     store, state, client = _client(tmp_path, now=now)
     store.add_reading(now - 600, 20.0, 40.0, 90, -60)
     r = client.get(f"/api/history?from={now-3600}&to={now}").json()
-    assert any(p["temperature"] == 20.0 for p in r["points"])
-    assert r["extent"]["earliest"] is not None
-    assert r["extent"]["latest"] is not None
+    assert r["bucket"] == 120
+    assert any(p["temp"] == 20.0 for p in r["series"])
 
 
 def test_gaps_endpoint_returns_split(tmp_path):

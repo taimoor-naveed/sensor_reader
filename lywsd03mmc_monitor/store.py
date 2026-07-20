@@ -253,11 +253,3 @@ class Store:
                         "hum": hu, "hum_min": hn, "hum_max": hx})
             b += bucket
         return out
-
-    def history_window(self, start: int, end: int) -> dict:
-        # Return raw per-minute readings + the device's hourly history for the window. The
-        # frontend holds this in memory and downsamples for display, so it can pan/zoom
-        # client-side without re-fetching. Overlap (an hour with both) is deduped in the
-        # frontend merge (live readings win per hour). Volume is bounded by the window width.
-        return {"points": self.readings_between(start, end),
-                "bands": self.history_between(start, end)}

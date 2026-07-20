@@ -177,13 +177,3 @@ def test_aggregated_series_staggered_fields(tmp_path):
     assert out[0]["temp"] == 20.0 and out[0]["hum"] == 44.0
 
 
-def test_history_window_returns_raw_and_history_for_any_span(tmp_path):
-    s = Store(str(tmp_path / "t.db"))
-    s.add_reading(1000, 20.0, 40.0, 90, -60)
-    win = s.history_window(0, 3600)               # narrow
-    assert any(p["temperature"] == 20.0 for p in win["points"])
-    assert win["bands"] == []
-    s.add_history(7200, 18.0, 22.0, 40, 55)       # a device hourly record
-    wide = s.history_window(0, 3 * 86400)         # wide span: still raw points + history (no rollup collapse)
-    assert any(p["temperature"] == 20.0 for p in wide["points"])
-    assert any(b["min_temp"] == 18.0 for b in wide["bands"])
