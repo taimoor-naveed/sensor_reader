@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#0e1420" />
+<meta name="theme-color" content="#160f22" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <title>Sensor</title>
@@ -11,17 +11,20 @@
 <script src="/static/vendor/echarts.min.js"></script>
 <style>
   :root{
-    --bg:#0e1420; --card1:#17202c; --card2:#1b2533; --txt:#e8edf2;
-    --muted:#7f90a8; --muted2:#5f7088; --line:#ffffff12;
-    --temp:#4cc9f0; --temp2:#9be4ff; --hum:#e879c9; --ok:#52d273; --warn:#ffb454;
-    --radius:16px;
+    --bg:#160f22; --card1:#1f1630; --card2:#261a3b; --txt:#f3edf9;
+    --muted:#a893c4; --muted2:#7d6b99; --line:#ffffff14;
+    --temp:#b794f6; --temp2:#d6bcfa; --hum:#ff8fd0; --ok:#82e6c0; --warn:#ffb454;
+    --pinkgrad:linear-gradient(120deg,#e17ad1,#9d7bf7);
+    --radius:20px;
   }
   *{box-sizing:border-box}
   html,body{max-width:100%;overflow-x:hidden}
   body{
     margin:0;color:var(--txt);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
-    background:radial-gradient(1100px 520px at 80% -12%,#16323f,var(--bg));
+    font-family:ui-rounded,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+    background:radial-gradient(1000px 500px at 85% -10%,#33204f,transparent),
+               radial-gradient(900px 600px at -10% 110%,#3a1533,transparent),
+               var(--bg);
     min-height:100vh;
     padding:14px;
     padding-left:max(14px, env(safe-area-inset-left));
@@ -37,11 +40,12 @@
   .hright{display:flex;align-items:center;gap:10px}
   .bars{display:flex;align-items:flex-end;gap:3px;height:16px}
   .bars i{width:4px;border-radius:1px;display:block}
-  .badge-live{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#9fb0c4;
-    background:#52d2731a;border:1px solid #52d27333;padding:5px 11px;border-radius:999px;white-space:nowrap}
+  .badge-live{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#c8b6de;
+    background:#82e6c01a;border:1px solid #82e6c033;padding:5px 11px;border-radius:999px;white-space:nowrap}
   .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 9px var(--ok)}
-  .btn{background:linear-gradient(120deg,var(--temp),#7aa7ff);color:#04222e;border:none;
+  .btn{background:var(--pinkgrad);color:#fff;border:none;
     border-radius:999px;padding:10px 16px;font-size:13.5px;font-weight:650;cursor:pointer;
+    box-shadow:0 4px 14px #e17ad13d;
     min-height:44px;touch-action:manipulation;-webkit-tap-highlight-color:transparent;white-space:nowrap}
   .btn:disabled{opacity:.6;cursor:default}
 
@@ -53,11 +57,11 @@
   .label{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
   .herorow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
   .heronum{font-size:clamp(52px,14vw,76px);font-weight:700;line-height:.9;
-    background:linear-gradient(120deg,var(--temp2),#c9b3ff);
+    background:linear-gradient(120deg,#ffb3e6,#c4a7ff);
     -webkit-background-clip:text;background-clip:text;color:transparent}
   .unit{font-size:22px;color:var(--muted);font-weight:500}
-  .pill{padding:6px 13px;border-radius:999px;background:#52d27322;color:#7fe6a0;
-    font-size:12.5px;border:1px solid #52d27340;white-space:nowrap}
+  .pill{padding:6px 13px;border-radius:999px;background:#ff8fd022;color:#ffb3e0;
+    font-size:12.5px;border:1px solid #ff8fd045;white-space:nowrap}
   .pill.warn{background:#ffb45422;color:#ffca7a;border-color:#ffb45455}
   .val{font-size:30px;font-weight:700;margin-top:8px}
   .val .u{font-size:15px;color:var(--muted);font-weight:500}
@@ -67,7 +71,7 @@
     font-size:11px;background:#ffb45422;color:var(--warn);border:1px solid #ffb45455;vertical-align:middle}
   .today-card{grid-column:span 2}
   .today{font-size:23px;font-weight:700;margin-top:8px;display:flex;align-items:baseline;gap:10px}
-  .today .hi{color:var(--temp2)} .today .lo{color:#7aa7ff}
+  .today .hi{color:#ffb3e6} .today .lo{color:#c4a7ff}
   .today .u{font-size:13px;color:var(--muted);font-weight:500}
   @media(min-width:760px){
     .grid{grid-template-columns:1.4fr 1fr 1fr}
@@ -78,10 +82,11 @@
   /* ---------- range chips ---------- */
   .chips{position:sticky;top:0;z-index:5;display:flex;gap:8px;margin:16px 0 12px;
     padding:8px 0;background:linear-gradient(var(--bg) 75%,transparent);}
-  .chips button{flex:1;font-size:13px;font-weight:600;min-height:44px;border-radius:12px;
-    background:#141d29;color:var(--muted);border:1px solid var(--line);cursor:pointer;
+  .chips button{flex:1;font-size:13px;font-weight:600;min-height:44px;border-radius:14px;
+    background:#1d1430;color:var(--muted);border:1px solid var(--line);cursor:pointer;
     touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-  .chips button.active{background:var(--temp);color:#04222e;border-color:transparent}
+  .chips button.active{background:var(--pinkgrad);color:#fff;border-color:transparent;
+    box-shadow:0 4px 14px #e17ad13d}
 
   /* ---------- chart cards ---------- */
   .chartwrap{display:grid;gap:12px}
@@ -107,9 +112,9 @@
   .gapfill{font-size:13px;color:var(--muted)}
   .gapcard.gap .gapfill{color:#ffca7a}
   .progress{margin-top:12px}
-  .ptrack{height:8px;border-radius:999px;background:#0c131c;border:1px solid var(--line);overflow:hidden}
-  .pbar{height:100%;width:0;background:linear-gradient(90deg,var(--temp),#7aa7ff);transition:width .3s}
-  .ptext{font-size:11.5px;color:#9fb0c4;margin-bottom:7px;display:flex;align-items:center;gap:8px}
+  .ptrack{height:8px;border-radius:999px;background:#140d20;border:1px solid var(--line);overflow:hidden}
+  .pbar{height:100%;width:0;background:var(--pinkgrad);transition:width .3s}
+  .ptext{font-size:11.5px;color:#c8b6de;margin-bottom:7px;display:flex;align-items:center;gap:8px}
 
   .spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;
     border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
@@ -123,8 +128,8 @@
 
   <header>
     <div>
-      <div class="title">LYWSD03MMC</div>
-      <div class="subtitle">Sensor Monitor</div>
+      <div class="title">LYWSD03MMC <span style="color:#ff8fd0">✿</span></div>
+      <div class="subtitle">Sensor Monitor ♡</div>
     </div>
     <div class="hright">
       <span class="bars" id="signalBars" title="Signal strength"></span>
@@ -211,7 +216,7 @@
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
-const COLORS = {t:"#4cc9f0", h:"#e879c9"};
+const COLORS = {t:"#c9a7ff", h:"#ff8fd0"};
 const charts = {t:null, h:null};
 const state = {token:"24h", data:null, scrubUntil:0, scrubbing:false};
 let lastSnap = {};
@@ -238,7 +243,7 @@ function renderBars(n){
   for(let i=0;i<4;i++){
     const b = document.createElement("i");
     b.style.height = (5 + i*4) + "px";
-    b.style.background = i < n ? COLORS.t : "#2b3a4a";
+    b.style.background = i < n ? COLORS.t : "#3a2b52";
     c.appendChild(b);
   }
 }
@@ -295,17 +300,17 @@ function baseOption(color){
     grid:{left:8, right:14, top:14, bottom:6, containLabel:true},
     tooltip:{trigger:"axis", showContent:false,
       axisPointer:{type:"line", snap:true, z:10,
-        lineStyle:{color:"#8fa3bd", width:1, type:"solid"}}},
+        lineStyle:{color:"#b9a3d9", width:1, type:"solid"}}},
     xAxis:{type:"time",
-      axisLine:{lineStyle:{color:"#2b3a4a"}},
+      axisLine:{lineStyle:{color:"#3a2b52"}},
       axisTick:{show:false},
       splitLine:{show:false},
-      axisLabel:{color:"#7f90a8", fontSize:11, hideOverlap:true, formatter:{
+      axisLabel:{color:"#a893c4", fontSize:11, hideOverlap:true, formatter:{
         year:"{yyyy}", month:"{MMM}", day:"{d} {MMM}",
         hour:"{HH}:{mm}", minute:"{HH}:{mm}", second:"{HH}:{mm}", millisecond:""}}},
     yAxis:{type:"value", scale:true, splitNumber:4,
-      axisLabel:{color:"#7f90a8", fontSize:11},
-      splitLine:{lineStyle:{color:"rgba(255,255,255,0.07)"}}},
+      axisLabel:{color:"#a893c4", fontSize:11},
+      splitLine:{lineStyle:{color:"rgba(255,255,255,0.08)"}}},
     series:[
       // min/max band drawn as a stacked pair: invisible base at min + shaded (max-min)
       {id:"min", type:"line", stack:"band", data:[], symbol:"none", silent:true,
