@@ -6,7 +6,11 @@ A small from-scratch app that monitors one Xiaomi LYWSD03MMC sensor over BLE and
 - Listens to the sensor's encrypted BLE advertisements (needs the device **bindkey**) for live temperature, humidity, battery, and signal.
 - Pulls the sensor's on-device history over GATT to fill in readings it missed while the app was off, with on-demand backfill of older data from the dashboard.
 - Stores everything in a local SQLite database (`sensor.db`).
-- Web dashboard: live readings plus a time-scale chart with 6h / 24h / 7d / All ranges, client-side pan & zoom, light smoothing, and gaps rendered as breaks instead of interpolated lines.
+- Web dashboard (mobile-first): live readings with comfort/dew-point, plus two synced
+  ECharts graphs (temperature, humidity) with 6H / 24H / 7D / 30D / All ranges,
+  touch-scrub readout of exact values, min/max bands, and real gaps rendered as breaks.
+  The server aggregates history into ≤ ~360 buckets per request, so every range —
+  including All — loads completely in one small response.
 
 ## Setup
 ```
