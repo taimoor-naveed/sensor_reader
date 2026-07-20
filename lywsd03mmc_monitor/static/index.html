@@ -2,112 +2,146 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0e1420" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <title>Sensor</title>
-<script src="/static/vendor/chart.umd.min.js"></script>
-<script src="/static/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
-<script src="/static/vendor/hammer.min.js"></script>
-<script src="/static/vendor/chartjs-plugin-zoom.min.js"></script>
+<!-- Apache ECharts 6.1.0 (vendored) -->
+<script src="/static/vendor/echarts.min.js"></script>
 <style>
   :root{
     --bg:#0e1420; --card1:#17202c; --card2:#1b2533; --txt:#e8edf2;
-    --muted:#7f90a8; --muted2:#5f7088; --accent:#4cc9f0; --accent2:#9be4ff;
-    --hum:#e879c9; --ok:#52d273; --warn:#ffb454; --radius:18px;
+    --muted:#7f90a8; --muted2:#5f7088; --line:#ffffff12;
+    --temp:#4cc9f0; --temp2:#9be4ff; --hum:#e879c9; --ok:#52d273; --warn:#ffb454;
+    --radius:16px;
   }
   *{box-sizing:border-box}
   html,body{max-width:100%;overflow-x:hidden}
-  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,system-ui,sans-serif;
-       background:radial-gradient(1100px 520px at 80% -12%,#16323f,var(--bg));
-       color:var(--txt);min-height:100vh;padding:clamp(14px,3vw,26px)}
-  .wrap{max-width:1100px;margin:0 auto}
-  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px}
-  .title{font-size:19px;font-weight:600}
-  .subtitle{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);margin-top:2px}
-  .controls{display:flex;align-items:center;gap:12px}
+  body{
+    margin:0;color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+    background:radial-gradient(1100px 520px at 80% -12%,#16323f,var(--bg));
+    min-height:100vh;
+    padding:14px;
+    padding-left:max(14px, env(safe-area-inset-left));
+    padding-right:max(14px, env(safe-area-inset-right));
+    padding-bottom:max(20px, env(safe-area-inset-bottom));
+  }
+  .wrap{max-width:1080px;margin:0 auto}
+
+  /* ---------- header ---------- */
+  header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:2px 0 16px}
+  .title{font-size:18px;font-weight:650;letter-spacing:.01em}
+  .subtitle{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);margin-top:2px}
+  .hright{display:flex;align-items:center;gap:10px}
   .bars{display:flex;align-items:flex-end;gap:3px;height:16px}
   .bars i{width:4px;border-radius:1px;display:block}
-  .badge-live{display:flex;align-items:center;gap:7px;font-size:13px;color:#9fb0c4;
-       background:#52d2731a;border:1px solid #52d27333;padding:5px 12px;border-radius:999px}
+  .badge-live{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#9fb0c4;
+    background:#52d2731a;border:1px solid #52d27333;padding:5px 11px;border-radius:999px;white-space:nowrap}
   .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 9px var(--ok)}
-  .btn{background:linear-gradient(120deg,var(--accent),#7aa7ff);color:#04222e;border:none;
-       border-radius:999px;padding:9px 17px;font-size:13.5px;font-weight:600;cursor:pointer;
-       min-height:40px;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+  .btn{background:linear-gradient(120deg,var(--temp),#7aa7ff);color:#04222e;border:none;
+    border-radius:999px;padding:10px 16px;font-size:13.5px;font-weight:650;cursor:pointer;
+    min-height:44px;touch-action:manipulation;-webkit-tap-highlight-color:transparent;white-space:nowrap}
   .btn:disabled{opacity:.6;cursor:default}
-  .grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:14px}
-  .card{background:linear-gradient(160deg,var(--card1),var(--card2));border:1px solid #ffffff10;
-        border-radius:var(--radius);padding:18px}
-  .hero{grid-row:span 2;display:flex;flex-direction:column}
-  .label{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
-  .herobody{flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px}
-  .heronum{font-size:clamp(46px,8vw,72px);font-weight:700;line-height:.85;
-       background:linear-gradient(120deg,var(--accent2),#c9b3ff);-webkit-background-clip:text;
-       background-clip:text;color:transparent}
-  .unit{font-size:20px;color:var(--muted);font-weight:500}
-  .pill{padding:5px 13px;border-radius:999px;background:#52d27322;color:#7fe6a0;font-size:12.5px;border:1px solid #52d27340}
-  .val{font-size:32px;font-weight:700;margin-top:8px}
-  .val .u{font-size:15px;color:var(--muted)}
+
+  /* ---------- stat cards ---------- */
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(2,1fr)}
+  .card{background:linear-gradient(160deg,var(--card1),var(--card2));
+    border:1px solid var(--line);border-radius:var(--radius);padding:16px;min-width:0}
+  .hero{grid-column:span 2;display:flex;flex-direction:column;gap:10px}
+  .label{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .herorow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .heronum{font-size:clamp(52px,14vw,76px);font-weight:700;line-height:.9;
+    background:linear-gradient(120deg,var(--temp2),#c9b3ff);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .unit{font-size:22px;color:var(--muted);font-weight:500}
+  .pill{padding:6px 13px;border-radius:999px;background:#52d27322;color:#7fe6a0;
+    font-size:12.5px;border:1px solid #52d27340;white-space:nowrap}
+  .pill.warn{background:#ffb45422;color:#ffca7a;border-color:#ffb45455}
+  .val{font-size:30px;font-weight:700;margin-top:8px}
+  .val .u{font-size:15px;color:var(--muted);font-weight:500}
   .sub{font-size:11px;color:var(--muted2);margin-top:6px}
-  .fresh{font-size:11px;color:var(--muted2)}
+  .fresh{font-size:11px;color:var(--muted2);margin-top:4px}
   .badge{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:999px;
-         font-size:11px;background:#ffb45422;color:var(--warn);border:1px solid #ffb45455}
-  .today{font-size:24px;font-weight:700;margin-top:10px;display:flex;align-items:baseline;gap:8px}
-  .today .hi{color:var(--accent2)} .today .lo{color:#7aa7ff}
-  /* gap banner */
-  .gapcard{margin-top:14px;border:1px solid #ffffff10;background:linear-gradient(160deg,var(--card1),var(--card2));border-radius:var(--radius);padding:16px}
+    font-size:11px;background:#ffb45422;color:var(--warn);border:1px solid #ffb45455;vertical-align:middle}
+  .today-card{grid-column:span 2}
+  .today{font-size:23px;font-weight:700;margin-top:8px;display:flex;align-items:baseline;gap:10px}
+  .today .hi{color:var(--temp2)} .today .lo{color:#7aa7ff}
+  .today .u{font-size:13px;color:var(--muted);font-weight:500}
+  @media(min-width:760px){
+    .grid{grid-template-columns:1.4fr 1fr 1fr}
+    .hero{grid-column:1;grid-row:span 2}
+    .today-card{grid-column:2 / span 2}
+  }
+
+  /* ---------- range chips ---------- */
+  .chips{position:sticky;top:0;z-index:5;display:flex;gap:8px;margin:16px 0 12px;
+    padding:8px 0;background:linear-gradient(var(--bg) 75%,transparent);}
+  .chips button{flex:1;font-size:13px;font-weight:600;min-height:44px;border-radius:12px;
+    background:#141d29;color:var(--muted);border:1px solid var(--line);cursor:pointer;
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+  .chips button.active{background:var(--temp);color:#04222e;border-color:transparent}
+
+  /* ---------- chart cards ---------- */
+  .chartwrap{display:grid;gap:12px}
+  @media(min-width:1000px){.chartwrap{grid-template-columns:1fr 1fr}}
+  .chartcard{padding:14px 8px 6px 8px}
+  .chead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;
+    min-height:40px;padding:0 8px}
+  .csub{font-size:12.5px;color:var(--muted);margin-top:4px;font-variant-numeric:tabular-nums}
+  .csub .mx{color:var(--txt)} .csub .mn{color:var(--muted)}
+  .creadout{text-align:right;font-variant-numeric:tabular-nums;display:none}
+  .creadout .rv{display:block;font-size:20px;font-weight:700;line-height:1.1}
+  .creadout .rt{display:block;font-size:11px;color:var(--muted2);margin-top:2px}
+  .chartcard.scrub .creadout{display:block}
+  .chartcard.scrub .csub{visibility:hidden}
+  .cchart{height:230px;touch-action:pan-y;-webkit-tap-highlight-color:transparent}
+  @media(min-width:760px){.cchart{height:260px}}
+  .tcolor{color:var(--temp2)} .hcolor{color:var(--hum)}
+
+  /* ---------- backfill card ---------- */
+  .gapcard{margin-top:12px}
   .gapcard.gap{border-color:#ffb45440;background:#ffb4540e}
   .gaprow{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
   .gapfill{font-size:13px;color:var(--muted)}
   .gapcard.gap .gapfill{color:#ffca7a}
-  .fillbtn{background:linear-gradient(120deg,var(--accent),#7aa7ff);color:#04222e;border:none;
-       border-radius:999px;padding:7px 15px;font-size:12.5px;font-weight:600;cursor:pointer;min-height:36px}
   .progress{margin-top:12px}
-  .ptrack{height:8px;border-radius:999px;background:#0c131c;border:1px solid #ffffff10;overflow:hidden}
-  .pbar{height:100%;width:0;background:linear-gradient(90deg,var(--accent),#7aa7ff);transition:width .3s}
+  .ptrack{height:8px;border-radius:999px;background:#0c131c;border:1px solid var(--line);overflow:hidden}
+  .pbar{height:100%;width:0;background:linear-gradient(90deg,var(--temp),#7aa7ff);transition:width .3s}
   .ptext{font-size:11.5px;color:#9fb0c4;margin-bottom:7px;display:flex;align-items:center;gap:8px}
-  /* charts */
-  .charts{margin-top:14px}
-  .charthead{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px}
-  .hint{font-size:10.5px;color:var(--muted2)}
-  .chips{display:flex;gap:6px}
-  .chips button{font-size:12px;padding:5px 12px;border-radius:999px;background:#0e1620;color:var(--muted);
-       border:1px solid #ffffff10;cursor:pointer;min-height:36px;touch-action:manipulation}
-  .chips button.active{background:var(--accent);color:#04222e;border-color:transparent;font-weight:600}
-  .chartbox{position:relative;height:clamp(190px,32vw,230px);margin-top:6px}
-  .chartbox.tall{height:clamp(360px,58vw,480px)}
-  canvas{width:100%!important}
-  .spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;
+    border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  @keyframes pulse{0%{transform:scale(1)}35%{transform:scale(1.06);filter:brightness(1.25)}100%{transform:scale(1)}}
+  @keyframes pulse{0%{transform:scale(1)}35%{transform:scale(1.05);filter:brightness(1.2)}100%{transform:scale(1)}}
   .pulse{animation:pulse .5s ease-out;display:inline-block}
-  @media (max-width:680px){
-    .grid{grid-template-columns:1fr 1fr}
-    .hero{grid-row:span 1;grid-column:span 2}
-  }
-  @media (max-width:420px){ .grid{grid-template-columns:1fr} .hero{grid-column:span 1} }
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <div class="topbar">
+  <header>
     <div>
       <div class="title">LYWSD03MMC</div>
       <div class="subtitle">Sensor Monitor</div>
     </div>
-    <div class="controls">
+    <div class="hright">
       <span class="bars" id="signalBars" title="Signal strength"></span>
       <span class="badge-live"><span class="dot" id="liveDot"></span><span id="liveBadge">—</span></span>
       <button class="btn" id="updateBtn">↻ Update</button>
     </div>
-  </div>
+  </header>
 
   <div class="grid">
     <div class="card hero">
       <div class="label">Temperature</div>
-      <div class="herobody">
+      <div class="herorow">
         <div><span class="heronum" id="temp">--</span><span class="unit"> °C</span></div>
-        <div class="fresh" id="tempUpdated">—</div>
+        <span class="pill" id="comfortPill" style="display:none"></span>
       </div>
+      <div class="sub" id="dewSub">—</div>
+      <div class="fresh" id="tempUpdated">—</div>
     </div>
 
     <div class="card">
@@ -119,21 +153,52 @@
     <div class="card">
       <div class="label">Battery</div>
       <div class="val"><span id="bat">--</span><span class="u"> %</span><span id="batbadge"></span></div>
-      <div class="sub"><span id="batSub">—</span></div>
+      <div class="sub" id="batSub">—</div>
       <div class="fresh" id="batUpdated">—</div>
     </div>
 
-    <div class="card" style="grid-column:span 2">
+    <div class="card today-card">
       <div class="label">Today</div>
-      <div class="today"><span class="hi" id="todayHigh">—</span><span class="lo" id="todayLow">—</span><span class="u" style="font-size:13px;color:var(--muted)">°C</span></div>
+      <div class="today"><span class="hi" id="todayHigh">—</span><span class="lo" id="todayLow">—</span><span class="u">°C</span></div>
       <div class="sub" id="todaySub">—</div>
     </div>
   </div>
 
-  <div class="gapcard" id="gapWrap">
+  <div class="chips" id="ranges">
+    <button data-r="6h">6H</button>
+    <button data-r="24h" class="active">24H</button>
+    <button data-r="7d">7D</button>
+    <button data-r="30d">30D</button>
+    <button data-r="all">All</button>
+  </div>
+
+  <div class="chartwrap">
+    <div class="card chartcard" id="tcard">
+      <div class="chead">
+        <div>
+          <div class="label tcolor">Temperature</div>
+          <div class="csub" id="tsub">—</div>
+        </div>
+        <div class="creadout tcolor" id="tread"></div>
+      </div>
+      <div class="cchart" id="tchart"></div>
+    </div>
+    <div class="card chartcard" id="hcard">
+      <div class="chead">
+        <div>
+          <div class="label hcolor">Humidity</div>
+          <div class="csub" id="hsub">—</div>
+        </div>
+        <div class="creadout hcolor" id="hread"></div>
+      </div>
+      <div class="cchart" id="hchart"></div>
+    </div>
+  </div>
+
+  <div class="card gapcard" id="gapWrap">
     <div class="gaprow">
       <span class="gapfill" id="gapFillable">Pull the sensor's stored history</span>
-      <button class="fillbtn" id="fillBtn">⤓ Fetch from sensor</button>
+      <button class="btn" id="fillBtn" style="min-height:38px;padding:8px 15px;font-size:12.5px">⤓ Fetch from sensor</button>
     </div>
     <div class="progress" id="fillProgressWrap" style="display:none">
       <div class="ptext" id="fillProgressText">Connecting…</div>
@@ -141,39 +206,23 @@
     </div>
   </div>
 
-  <div class="charts">
-    <div class="charthead">
-      <div class="label">Temperature &amp; Humidity</div>
-      <div style="display:flex;align-items:center;gap:14px">
-        <span class="hint">drag or scroll sideways to pan · pinch or Ctrl-scroll to zoom</span>
-        <div class="chips" id="ranges">
-          <button data-r="6h">6h</button>
-          <button data-r="24h" class="active">24h</button>
-          <button data-r="7d">7d</button>
-          <button data-r="all">All</button>
-        </div>
-      </div>
-    </div>
-    <div class="card"><div class="chartbox tall"><canvas id="chart"></canvas></div></div>
-  </div>
-
 </div>
 
 <script>
+"use strict";
 const $ = id => document.getElementById(id);
+const COLORS = {t:"#4cc9f0", h:"#e879c9"};
+const charts = {t:null, h:null};
+const state = {token:"24h", data:null, scrubUntil:0, scrubbing:false};
 let lastSnap = {};
-let chart = null, win = null, extent = null, activeToken = "24h", serverNow = 0;
-let memT = [], memH = [], renderPending = false, loadedFrom = 0, loadedTo = 0, ensureTimer = null;
-const COLORS = {temp:"#9be4ff", hum:"#e879c9"};
-const IS_TOUCH = window.matchMedia("(pointer: coarse)").matches;
 
-/* ---------- live values ---------- */
+/* =============================== live cards =============================== */
 function ago(ts){
   if(!ts) return "—";
   const s = Math.max(0, Math.floor(Date.now()/1000 - ts));
-  if(s < 60)   return `updated ${s}s ago`;
-  if(s < 3600) return `updated ${Math.floor(s/60)}m ago`;
-  if(s < 86400)return `updated ${Math.floor(s/3600)}h ago`;
+  if(s < 60)    return `updated ${s}s ago`;
+  if(s < 3600)  return `updated ${Math.floor(s/60)}m ago`;
+  if(s < 86400) return `updated ${Math.floor(s/3600)}h ago`;
   return `updated ${Math.floor(s/86400)}d ago`;
 }
 function setVal(id, val, fmt){
@@ -189,7 +238,7 @@ function renderBars(n){
   for(let i=0;i<4;i++){
     const b = document.createElement("i");
     b.style.height = (5 + i*4) + "px";
-    b.style.background = i < n ? "#4cc9f0" : "#2b3a4a";
+    b.style.background = i < n ? COLORS.t : "#2b3a4a";
     c.appendChild(b);
   }
 }
@@ -198,6 +247,7 @@ function renderFreshness(){
   $("humUpdated").textContent  = ago(lastSnap.humidity_ts);
   $("batUpdated").textContent  = ago(lastSnap.battery_ts);
 }
+function hm(ts){ return new Date(ts*1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}); }
 async function refreshCurrent(){
   let r; try{ r = await (await fetch("/api/current")).json(); }catch(e){ return; }
   lastSnap = r;
@@ -206,17 +256,23 @@ async function refreshCurrent(){
   setVal("bat",  r.battery,     v=>String(v));
   setVal("todayHigh", r.today_high, v=>"↑"+v.toFixed(1));
   setVal("todayLow",  r.today_low,  v=>"↓"+v.toFixed(1));
-  $("batSub").textContent  = r.battery_source === "gatt" ? "voltage-derived · via update" : "passive";
+  $("batSub").textContent = r.battery_source === "gatt" ? "voltage-derived · via update" : "passive";
   $("liveBadge").textContent = r.online ? "Live" : "Offline";
   $("liveDot").style.background = r.online ? "var(--ok)" : "var(--muted2)";
   $("liveDot").style.boxShadow  = r.online ? "0 0 9px var(--ok)" : "none";
   $("batbadge").innerHTML = r.battery_low ? '<span class="badge">Low battery</span>' : "";
   $("todaySub").textContent = (r.today_high_ts && r.today_low_ts)
     ? `high ${hm(r.today_high_ts)} · low ${hm(r.today_low_ts)}` : "—";
+  const pill = $("comfortPill");
+  if(r.comfort){
+    pill.style.display = "";
+    pill.textContent = r.comfort;
+    pill.classList.toggle("warn", r.comfort !== "comfortable");
+  } else pill.style.display = "none";
+  $("dewSub").textContent = (r.dew_point != null) ? `dew point ${r.dew_point.toFixed(1)} °C` : "—";
   renderBars(r.signal_bars ?? 0);
   renderFreshness();
 }
-function hm(ts){ return new Date(ts*1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}); }
 
 async function doUpdate(){
   const b = $("updateBtn"); b.disabled = true;
@@ -225,168 +281,158 @@ async function doUpdate(){
     const resp = await fetch("/api/update", {method:"POST"});
     if(resp.status === 409){ b.textContent = "Sensor busy"; }
     else if(!resp.ok){ b.textContent = "Failed"; }
-    else { b.textContent = "✓ Updated"; await refreshCurrent(); await reload(); }
+    else { b.textContent = "✓ Updated"; await refreshCurrent(); await loadRange(state.token); }
   }catch(e){ b.textContent = "Failed"; }
   setTimeout(()=>{ b.textContent = "↻ Update"; b.disabled = false; }, 1500);
 }
 
-/* ---------- charts ---------- */
-function gradient(ctx, color){
-  const g = ctx.createLinearGradient(0,0,0,240);
-  g.addColorStop(0, color+"44"); g.addColorStop(1, color+"00"); return g;
+/* ================================= charts ================================= */
+// Health-app model: range chips -> ONE fetch of a complete, server-aggregated
+// series (<= ~360 buckets) -> render. No client buffering, no pan/zoom state.
+function baseOption(color){
+  return {
+    animation:false,
+    grid:{left:8, right:14, top:14, bottom:6, containLabel:true},
+    tooltip:{trigger:"axis", showContent:false,
+      axisPointer:{type:"line", snap:true, z:10,
+        lineStyle:{color:"#8fa3bd", width:1, type:"solid"}}},
+    xAxis:{type:"time",
+      axisLine:{lineStyle:{color:"#2b3a4a"}},
+      axisTick:{show:false},
+      splitLine:{show:false},
+      axisLabel:{color:"#7f90a8", fontSize:11, hideOverlap:true, formatter:{
+        year:"{yyyy}", month:"{MMM}", day:"{d} {MMM}",
+        hour:"{HH}:{mm}", minute:"{HH}:{mm}", second:"{HH}:{mm}", millisecond:""}}},
+    yAxis:{type:"value", scale:true, splitNumber:4,
+      axisLabel:{color:"#7f90a8", fontSize:11},
+      splitLine:{lineStyle:{color:"rgba(255,255,255,0.07)"}}},
+    series:[
+      // min/max band drawn as a stacked pair: invisible base at min + shaded (max-min)
+      {id:"min", type:"line", stack:"band", data:[], symbol:"none", silent:true,
+       lineStyle:{opacity:0}, connectNulls:false, z:1},
+      {id:"band", type:"line", stack:"band", data:[], symbol:"none", silent:true,
+       lineStyle:{opacity:0}, areaStyle:{color:color, opacity:0.16}, connectNulls:false, z:1},
+      {id:"avg", type:"line", data:[], symbol:"none", connectNulls:false, z:3,
+       lineStyle:{width:2, color:color}, itemStyle:{color:color}, emphasis:{disabled:true}},
+    ],
+  };
 }
-// ONE chart, TWO stacked y-axes (temp panel on top, humidity below) sharing a single
-// x-axis. Pan/zoom is on the x-axis only, so both panels move together natively — no
-// cross-chart sync code needed (that's why we use one chart, not two).
-function mkChart(canvas){
-  const ctx = canvas.getContext("2d");
-  const ds = (label, color, axis) => ({
-    label, yAxisID:axis, data:[], borderColor:color, backgroundColor:gradient(ctx,color),
-    borderWidth:2, fill:true, cubicInterpolationMode:"monotone", pointRadius:0,
-    spanGaps: 90*60*1000,   // join across <90min gaps; break (empty area) for real gaps
-  });
-  const yAxis = (color, unit) => ({
-    type:"linear", position:"left", stack:"panels", stackWeight:1, offset:true,
-    grid:{color:"#ffffff10"}, ticks:{color:color}, title:{display:true, text:unit, color:"#7f90a8"},
-  });
-  return new Chart(ctx, {
-    type:"line",
-    data:{datasets:[ ds("Temperature °C", COLORS.temp, "yTemp"),
-                     ds("Humidity %",     COLORS.hum,  "yHum") ]},
-    options:{responsive:true, maintainAspectRatio:false, animation:false,
-      interaction:{mode:"index", axis:"x", intersect:false},
-      plugins:{
-        // legend hidden on touch; non-interactive on desktop (no accidental series toggle)
-        legend:{display: !IS_TOUCH, onClick: () => {}, position:"top",
-                labels:{color:"#9fb0c4", usePointStyle:true, boxWidth:8, boxHeight:8, padding:14}},
-        // tooltip off on touch (looks bad / awkward); on desktop show a real date, not the raw ms
-        tooltip:{enabled: !IS_TOUCH, callbacks:{
-          title: items => items.length ? new Date(items[0].parsed.x)
-            .toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"}) : ""}},
-        zoom:{ pan:{enabled:true, mode:"x", onPan:onGesture, onPanComplete:onGesture},
-               zoom:{wheel:{enabled:true, modifierKey:"ctrl"}, pinch:{enabled:true}, mode:"x",
-                     onZoom:onGesture, onZoomComplete:onGesture},
-               limits:{x:{}} }},
-      scales:{
-        x:{type:"time", grid:{color:"#ffffff10"},
-           time:{displayFormats:{minute:"HH:mm", hour:"HH:mm", day:"MMM d"}},
-           ticks:{color:"#7f90a8", maxTicksLimit:8, autoSkip:true, major:{enabled:true}}},
-        // first-declared stacked axis renders at the bottom, so declare humidity first
-        // to put the temperature panel on top.
-        yHum:  yAxis(COLORS.hum,  "%"),
-        yTemp: yAxis(COLORS.temp, "°C")}}
-  });
+function mkCharts(){
+  charts.t = echarts.init($("tchart"), null, {renderer:"canvas"});
+  charts.h = echarts.init($("hchart"), null, {renderer:"canvas"});
+  charts.t.setOption(baseOption(COLORS.t));
+  charts.h.setOption(baseOption(COLORS.h));
+  charts.t.group = charts.h.group = "sync";
+  echarts.connect("sync");                       // synced axis pointer across both
+  charts.t.on("updateAxisPointer", onAxisPointer);
+  charts.h.on("updateAxisPointer", onAxisPointer);
+  window.addEventListener("resize", ()=>{ charts.t.resize(); charts.h.resize(); });
 }
-function applyWindow(){ chart.zoomScale("x", {min: win.from*1000, max: win.to*1000}, "none"); }
-function setLimits(){
-  if(!extent || !extent.earliest) return;
-  chart.options.plugins.zoom.limits.x = {min: extent.earliest*1000, max: extent.latest*1000};
-}
-function downsample(points, target=180){
-  // Average into uniform time buckets so dense recent (per-minute, 0.1°-stepped) data
-  // renders as smoothly as the sparse hourly history — no more jagged half.
-  if(points.length <= target) return points;
-  const x0 = points[0].x, x1 = points[points.length-1].x, bw = ((x1 - x0) || 1) / target;
-  const buckets = new Map();
-  for(const p of points){
-    if(!Number.isFinite(p.y)) continue;   // never average nulls/NaN as zero
-    const b = Math.floor((p.x - x0) / bw);
-    let a = buckets.get(b); if(!a){ a = {sx:0, sy:0, n:0}; buckets.set(b, a); }
-    a.sx += p.x; a.sy += p.y; a.n++;
+function toLine(series, bucket, key){
+  // Drop empty buckets but keep REAL gaps as explicit break points: consecutive
+  // samples are connected unless they're more than max(2.5 buckets, 90 min)
+  // apart. Sparse data (e.g. hourly history inside 5-min buckets) stays a
+  // continuous line; genuine outages still break it.
+  const TH = Math.max(2.5 * bucket, 5400) * 1000;
+  const avg=[], mn=[], bd=[];
+  let prevX = null;
+  for(const p of series){
+    const v = p[key];
+    if(v == null) continue;
+    const x = p.t*1000;
+    if(prevX != null && x - prevX > TH){
+      const bx = (prevX + x) / 2;
+      avg.push([bx, null]); mn.push([bx, null]); bd.push([bx, null]);
+    }
+    const lo = p[key+"_min"], hi = p[key+"_max"];
+    avg.push([x, v]);
+    mn.push([x, lo != null ? lo : v]);
+    bd.push([x, (lo != null && hi != null) ? hi - lo : 0]);
+    prevX = x;
   }
-  return [...buckets.values()].map(a => ({x:a.sx/a.n, y:a.sy/a.n})).sort((a,b)=>a.x-b.x);
+  return {avg, mn, bd};
 }
-function smooth(points, halfMs){
-  // Light time-window moving average: smooths the dense (live) region's per-minute
-  // 0.1°-step noise while leaving sparse hourly history essentially untouched.
-  if(points.length < 3 || !halfMs) return points;
-  const out = [];
-  for(let i=0;i<points.length;i++){
-    const x = points[i].x; let sy = 0, n = 0;
-    for(let j=i;     j>=0           && x - points[j].x <= halfMs; j--){ sy += points[j].y; n++; }
-    for(let j=i+1;   j<points.length && points[j].x - x <= halfMs; j++){ sy += points[j].y; n++; }
-    out.push({x, y: sy/n});
+function render(r){
+  state.data = r;
+  const t = toLine(r.series, r.bucket, "temp");
+  const h = toLine(r.series, r.bucket, "hum");
+  const axis = {min:r.from*1000, max:r.to*1000};
+  charts.t.setOption({xAxis:axis, series:[{id:"min",data:t.mn},{id:"band",data:t.bd},{id:"avg",data:t.avg}]});
+  charts.h.setOption({xAxis:axis, series:[{id:"min",data:h.mn},{id:"band",data:h.bd},{id:"avg",data:h.avg}]});
+  renderSummaries();
+}
+function renderSummaries(){
+  const S = state.data ? state.data.series : [];
+  const sum = (avgKey, minKey, maxKey, fmt, unit) => {
+    const avgs = S.map(p=>p[avgKey]).filter(v=>v!=null);
+    if(!avgs.length) return "no data in range";
+    const mins = S.map(p=>p[minKey]).filter(v=>v!=null);
+    const maxs = S.map(p=>p[maxKey]).filter(v=>v!=null);
+    const lo = Math.min(...(mins.length?mins:avgs)), hi = Math.max(...(maxs.length?maxs:avgs));
+    const avg = avgs.reduce((a,b)=>a+b,0)/avgs.length;
+    return `<span class="mn">↓${fmt(lo)}</span>  <span class="mx">↑${fmt(hi)}</span>  ⌀${fmt(avg)}${unit}`;
+  };
+  $("tsub").innerHTML = sum("temp","temp_min","temp_max", v=>v.toFixed(1), "°");
+  $("hsub").innerHTML = sum("hum","hum_min","hum_max", v=>v.toFixed(0), "%");
+}
+function fmtBucketTime(tsec){
+  const d = new Date(tsec*1000), b = state.data ? state.data.bucket : 300;
+  if(b >= 86400) return d.toLocaleDateString([], {month:"short", day:"numeric"});
+  if(b >= 3600)  return d.toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"});
+  const span = state.data ? (state.data.to - state.data.from) : 0;
+  return span > 86400
+    ? d.toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"})
+    : d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+}
+function nearestBucket(sec){
+  const S = state.data ? state.data.series : [];
+  if(!S.length) return null;
+  const b = state.data.bucket;
+  let i = Math.max(0, Math.min(S.length-1, Math.round((sec - S[0].t)/b)));
+  for(let d=0; d<S.length; d++){
+    for(const j of [i-d, i+d]){
+      if(j>=0 && j<S.length && (S[j].temp!=null || S[j].hum!=null)) return S[j];
+    }
   }
-  return out;
+  return null;
 }
-// Data lives in memory (memT/memH). Pan/zoom re-renders the visible slice CLIENT-SIDE
-// (no network), so the graph updates every frame instead of waiting for a fetch.
-function ingest(r){          // store a fetched window in memory (merged, deduped, null-filtered)
-  serverNow = r.now ?? r.to; extent = r.extent; loadedFrom = r.from; loadedTo = r.to;
-  const rawHours = new Set((r.points||[]).map(p => Math.floor(p.ts/3600)));
-  const T = [], H = [];
-  for(const b of (r.bands||[])){          // device hourly history fills hours we never saw live
-    if(rawHours.has(Math.floor(b.hour_ts/3600))) continue;
-    T.push({x:b.hour_ts*1000, y:(b.min_temp+b.max_temp)/2});
-    H.push({x:b.hour_ts*1000, y:(b.min_hum+b.max_hum)/2});
+function onAxisPointer(ev){
+  const ax = ev.axesInfo && ev.axesInfo[0];
+  if(!ax || ax.value == null) return;
+  const p = nearestBucket(ax.value/1000);
+  if(!p) return;
+  state.scrubUntil = Date.now() + 4000;
+  state.scrubbing = true;
+  const time = fmtBucketTime(p.t);
+  $("tread").innerHTML = `<span class="rv">${p.temp!=null ? p.temp.toFixed(1)+"°" : "–"}</span><span class="rt">${time}</span>`;
+  $("hread").innerHTML = `<span class="rv">${p.hum!=null ? Math.round(p.hum)+"%" : "–"}</span><span class="rt">${time}</span>`;
+  $("tcard").classList.add("scrub");
+  $("hcard").classList.add("scrub");
+}
+function endScrubTick(){
+  if(state.scrubbing && Date.now() > state.scrubUntil){
+    state.scrubbing = false;
+    $("tcard").classList.remove("scrub");
+    $("hcard").classList.remove("scrub");
+    charts.t.dispatchAction({type:"hideTip"});
+    charts.h.dispatchAction({type:"hideTip"});
   }
-  for(const p of (r.points||[])){         // live readings (per-field; skip the staggered nulls)
-    if(p.temperature != null) T.push({x:p.ts*1000, y:p.temperature});
-    if(p.humidity != null)    H.push({x:p.ts*1000, y:p.humidity});
-  }
-  T.sort((a,b)=>a.x-b.x); H.sort((a,b)=>a.x-b.x);
-  memT = T; memH = H;
 }
-async function fetchRange(token){        // bootstrap / refresh the recent buffer (server-anchored)
-  let r; try{ r = await (await fetch(`/api/history?range=${token}`)).json(); }catch(e){ return; }
-  ingest(r);
+async function loadRange(token){
+  let r;
+  try{ r = await (await fetch(`/api/history?range=${token}`)).json(); }
+  catch(e){ return; }
+  if(token !== state.token) return;            // a newer chip click won round the race
+  render(r);
 }
-async function loadSpan(from, to){       // load an explicit window into memory
-  let r; try{ r = await (await fetch(`/api/history?from=${Math.round(from)}&to=${Math.round(to)}`)).json(); }catch(e){ return; }
-  ingest(r);
-}
-async function ensure(from, to){         // make sure the buffer covers [from,to]; fetch (with margin) if not
-  if(loadedTo && from >= loadedFrom && to <= loadedTo) return false;
-  const margin = Math.max(to - from, 86400);
-  await loadSpan(from - margin, to + margin);
-  return true;
-}
-function renderVisible(){
-  if(!win) return;
-  const lo = win.from*1000, hi = win.to*1000, pad = (hi - lo) * 0.15;
-  const slice = arr => arr.filter(p => p.x >= lo - pad && p.x <= hi + pad);
-  const halfMs = (hi - lo) / 120;   // light smoothing, scales with the zoom level
-  chart.data.datasets[0].data = smooth(downsample(slice(memT)), halfMs);
-  chart.data.datasets[1].data = smooth(downsample(slice(memH)), halfMs);
-  setLimits();
-  chart.update("none");
-}
-function scheduleRender(){           // coalesce rapid gesture events into one render per frame
-  if(renderPending) return;
-  renderPending = true;
-  requestAnimationFrame(()=>{ renderPending = false; renderVisible(); });
-}
-function onGesture({chart}){          // pan/zoom -> re-render the visible slice from memory
-  win = {from: Math.round(chart.scales.x.min/1000), to: Math.round(chart.scales.x.max/1000)};
-  activeToken = null;
-  document.querySelectorAll('#ranges button').forEach(b=>b.classList.remove("active"));
-  scheduleRender();      // instant: render what's already in memory
-  scheduleEnsure();      // debounced: if we panned past the buffer, load more then re-render
-}
-function scheduleEnsure(){
-  clearTimeout(ensureTimer);
-  ensureTimer = setTimeout(async ()=>{ if(win && await ensure(win.from, win.to)) renderVisible(); }, 250);
-}
-const RANGES = {"6h":21600, "24h":86400, "7d":604800};
-function rangeWindow(token){
-  if(token === "all" && extent && extent.earliest) return {from: extent.earliest, to: extent.latest};
-  return {from: serverNow - (RANGES[token] || 86400), to: serverNow};
-}
-async function setRange(token){
-  activeToken = token;
-  document.querySelectorAll('#ranges button').forEach(b=>b.classList.toggle("active", b.dataset.r === token));
-  win = rangeWindow(token);
-  applyWindow();
-  await ensure(win.from, win.to);   // "All" (or any window beyond the buffer) loads on demand
-  renderVisible();
-}
-async function reload(){
-  await fetchRange("7d");
-  if(activeToken) await setRange(activeToken);             // re-anchor preset / reload "All"
-  else { await ensure(win.from, win.to); renderVisible(); }
+function setRange(token){
+  state.token = token;
+  document.querySelectorAll("#ranges button").forEach(
+    b => b.classList.toggle("active", b.dataset.r === token));
+  loadRange(token);
 }
 
-/* ---------- gaps + backfill ---------- */
+/* ============================ gaps + backfill ============================= */
 let gapState = null;
 async function refreshGaps(){
   try{
@@ -416,7 +462,7 @@ function pollBackfill(){
         clearInterval(iv);
         $("fillProgressText").textContent = `✓ Filled ${st.filled} hour(s)`;
         $("fillProgressBar").style.width = "100%";
-        await refreshGaps(); await reload();
+        await refreshGaps(); await loadRange(state.token);
         resolve();
       } else if(st.state === "error"){
         clearInterval(iv);
@@ -427,8 +473,8 @@ function pollBackfill(){
   });
 }
 async function doFetch(){
-  // Always available: if a >1h gap is known, fetch exactly that range; otherwise pull
-  // the whole recoverable window so the device's stored history is synced on demand.
+  // If a >1h gap is known, fetch exactly that range; otherwise pull the whole
+  // recoverable window so the device's stored history is synced on demand.
   const f = (gapState && gapState.fillable) || [];
   const now = Math.floor(Date.now()/1000);
   const from = f.length ? f[0] : now - 7 * 86400;
@@ -438,8 +484,8 @@ async function doFetch(){
   $("fillProgressText").innerHTML = '<span class="spin"></span> Connecting…';
   $("fillProgressBar").style.width = "0%";
   try{
-    const resp = await fetch("/api/backfill", {method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({from, to})});
+    const resp = await fetch("/api/backfill", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({from, to})});
     if(resp.status === 409){ $("fillProgressText").textContent = "Sensor busy — try again"; }
     else if(!resp.ok){ $("fillProgressText").textContent = "Fetch failed"; }
     else { await pollBackfill(); }
@@ -448,39 +494,30 @@ async function doFetch(){
   setTimeout(()=>{ $("fillProgressWrap").style.display = "none"; }, 1800);
 }
 
-/* ---------- wire up ---------- */
+/* ================================ wire up ================================= */
 $("updateBtn").addEventListener("click", doUpdate);
 $("fillBtn").addEventListener("click", doFetch);
-$("ranges").addEventListener("click", e=>{ if(e.target.tagName === "BUTTON") setRange(e.target.dataset.r); });
+$("ranges").addEventListener("click", e=>{
+  if(e.target.tagName === "BUTTON") setRange(e.target.dataset.r);
+});
 
-window.addEventListener("load", async ()=>{
-  Chart.register(window.ChartZoom || window['chartjs-plugin-zoom']);
-  chart = mkChart($("chart"));
-  window.chart = chart;
-  // Horizontal two-finger scroll pans; plain vertical scroll is left to the page.
-  $("chart").addEventListener("wheel", (e)=>{
-    if(e.ctrlKey || e.metaKey) return;                 // modifier + wheel -> let the plugin zoom
-    if(Math.abs(e.deltaX) > Math.abs(e.deltaY)){        // sideways scroll -> pan
-      e.preventDefault();
-      chart.pan({x: -e.deltaX}, undefined, "default");
-      onGesture({chart});
-    }
-  }, {passive:false});
+window.addEventListener("load", ()=>{
+  mkCharts();
+  window.__app = {charts, state};
   refreshCurrent();
-  await fetchRange("7d");
   setRange("24h");
   refreshGaps();
   setInterval(refreshCurrent, 2000);
   setInterval(renderFreshness, 1000);
   setInterval(refreshGaps, 60000);
-  // refresh recent data periodically, but only while viewing recent data so we don't
-  // clobber a buffer the user panned into older history
-  setInterval(async ()=>{
-    if(win && win.to >= serverNow - 60 && activeToken !== "all"){
-      await fetchRange("7d");
-      if(activeToken) setRange(activeToken); else renderVisible();
-    }
-  }, 15000);
+  setInterval(endScrubTick, 500);
+  // keep the active range fresh — but never mid-scrub or while backgrounded
+  setInterval(()=>{
+    if(!document.hidden && Date.now() > state.scrubUntil) loadRange(state.token);
+  }, 60000);
+  document.addEventListener("visibilitychange", ()=>{
+    if(!document.hidden){ refreshCurrent(); loadRange(state.token); }
+  });
 });
 </script>
 </body>
