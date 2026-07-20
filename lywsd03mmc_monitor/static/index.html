@@ -309,10 +309,13 @@ function baseOption(color){
     series:[
       // min/max band drawn as a stacked pair: invisible base at min + shaded (max-min)
       {id:"min", type:"line", stack:"band", data:[], symbol:"none", silent:true,
+       smooth:0.4, smoothMonotone:"x",
        lineStyle:{opacity:0}, connectNulls:false, z:1},
       {id:"band", type:"line", stack:"band", data:[], symbol:"none", silent:true,
+       smooth:0.4, smoothMonotone:"x",
        lineStyle:{opacity:0}, areaStyle:{color:color, opacity:0.16}, connectNulls:false, z:1},
       {id:"avg", type:"line", data:[], symbol:"none", connectNulls:false, z:3,
+       smooth:0.4, smoothMonotone:"x",
        lineStyle:{width:2, color:color}, itemStyle:{color:color}, emphasis:{disabled:true}},
     ],
   };
@@ -334,22 +337,46 @@ function toLine(series, bucket, key){
   // apart. Sparse data (e.g. hourly history inside 5-min buckets) stays a
   // continuous line; genuine outages still break it.
   const TH = Math.max(2.5 * bucket, 5400) * 1000;
-  const avg=[], mn=[], bd=[];
-  let prevX = null;
+  const pts = [];
   for(const p of series){
-    const v = p[key];
-    if(v == null) continue;
-    const x = p.t*1000;
-    if(prevX != null && x - prevX > TH){
-      const bx = (prevX + x) / 2;
+    if(p[key] == null) continue;
+    pts.push({x: p.t*1000, v: p[key], lo: p[key+"_min"], hi: p[key+"_max"]});
+  }
+  const segs = [];
+  for(const p of pts){
+    const seg = segs[segs.length-1];
+    if(!seg || p.x - seg[seg.length-1].x > TH) segs.push([p]);
+    else seg.push(p);
+  }
+  // Dense buckets (6H/24H) carry the sensor's 0.1° quantization as a staircase —
+  // take a light weighted moving average per segment. The band underneath stays
+  // raw min/max, so the true spread remains visible. Never smooths across gaps.
+  if(bucket <= 300){
+    const W = [1, 2, 3, 2, 1], HALF = 2;
+    for(let s = 0; s < segs.length; s++){
+      segs[s] = segs[s].map((p, i, seg)=>{
+        let sum = 0, wsum = 0;
+        for(let k = -HALF; k <= HALF; k++){
+          const q = seg[i+k];
+          if(!q) continue;
+          sum += q.v * W[k+HALF]; wsum += W[k+HALF];
+        }
+        return {...p, v: sum/wsum};
+      });
+    }
+  }
+  const avg=[], mn=[], bd=[];
+  segs.forEach((seg, i)=>{
+    if(i > 0){
+      const bx = (segs[i-1][segs[i-1].length-1].x + seg[0].x) / 2;
       avg.push([bx, null]); mn.push([bx, null]); bd.push([bx, null]);
     }
-    const lo = p[key+"_min"], hi = p[key+"_max"];
-    avg.push([x, v]);
-    mn.push([x, lo != null ? lo : v]);
-    bd.push([x, (lo != null && hi != null) ? hi - lo : 0]);
-    prevX = x;
-  }
+    for(const p of seg){
+      avg.push([p.x, p.v]);
+      mn.push([p.x, p.lo != null ? p.lo : p.v]);
+      bd.push([p.x, (p.lo != null && p.hi != null) ? p.hi - p.lo : 0]);
+    }
+  });
   return {avg, mn, bd};
 }
 function render(r){
