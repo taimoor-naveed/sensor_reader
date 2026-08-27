@@ -33,14 +33,17 @@ pytest --ignore=tests/ui            # skip the browser-based tests
 ```
 
 ## Deployment
-`docs/deployment.md` documents running it unattended on a Windows machine
-(scheduled task, autostart at boot, log rotation); `deploy/push.sh` ships
-updates there over SSH.
+`docs/deployment.md` documents running it unattended on an Ubuntu machine (systemd
+user service, autostart at boot with no login, log rotation). `deploy/bootstrap.sh`
+preps a fresh host, `deploy/push.sh` ships updates over SSH, and
+`deploy/restore-db.sh` merges a backed-up `sensor.db` onto the target.
 
 ## Notes
 - **macOS:** the first run prompts for Bluetooth permission for your terminal/app; allow it.
   The sensor's OS-level address is a CoreBluetooth UUID, not a MAC — this is expected and handled.
-- **Windows/Linux:** no extra steps; Bluetooth must be on.
+- **Linux:** BlueZ must be running and the user needs D-Bus access to `org.bluez`
+  (usually the `bluetooth` group). Here `device.address` is the real MAC.
+- **Windows:** no extra steps; Bluetooth must be on.
 - The bindkey is generated when the sensor is paired in the Mi Home app. Extract it with
   [Xiaomi-cloud-tokens-extractor](https://github.com/PiotrMachowski/Xiaomi-cloud-tokens-extractor),
   which pulls it from your Xiaomi cloud account — browser-based flasher tricks no longer work

@@ -1,6 +1,10 @@
 config.toml
 *.db
 
+# Local database backups pulled off deployment targets (large, and the .db is
+# already ignored — keep the whole tree out of git)
+backups/
+
 # Machine-specific / private site info (kept local, never pushed)
 deploy/local.env
 docs/deployment.local.md
