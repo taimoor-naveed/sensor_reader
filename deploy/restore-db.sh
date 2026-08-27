@@ -77,7 +77,11 @@ ssh "$REMOTE" "$REMOTE_SYSTEMCTL stop '$SERVICE' 2>/dev/null || true" 2>&1 | str
 STOPPED=1
 
 echo "==> snapshotting the current target DB (if any)"
-ssh "$REMOTE" "cd '$APP_DIR' && if [ -f sensor.db ]; then for f in sensor.db sensor.db-wal sensor.db-shm; do [ -f \"\$f\" ] && cp -a \"\$f\" \"\$f.pre-restore-$STAMP\"; done; echo '    saved as sensor.db*.pre-restore-$STAMP'; else echo '    no existing sensor.db on the target'; fi" 2>&1 | strip_ssh_noise
+# Use SQLite's backup API, not cp: the live DB is in WAL mode, so a copy of
+# sensor.db alone can be nearly empty with the real content still in the -wal
+# sidecar. .backup() checkpoints into one self-contained, restorable file.
+SNAP_PY='import sqlite3,sys;s=sqlite3.connect(sys.argv[1]);d=sqlite3.connect(sys.argv[2]);s.backup(d);d.close();s.close()'
+ssh "$REMOTE" "cd '$APP_DIR' && if [ ! -f sensor.db ]; then echo '    no existing sensor.db on the target'; elif [ -x .venv/bin/python ]; then .venv/bin/python -c '$SNAP_PY' sensor.db sensor.db.pre-restore-$STAMP && echo '    self-contained copy saved as sensor.db.pre-restore-$STAMP'; else for f in sensor.db sensor.db-wal sensor.db-shm; do [ -f \"\$f\" ] && cp -a \"\$f\" \"\$f.pre-restore-$STAMP\"; done; echo '    copied sensor.db* — roll back by renaming ALL of them together'; fi" 2>&1 | strip_ssh_noise
 
 echo "==> uploading the backup"
 scp -q "$SRC" "$REMOTE:$APP_DIR/sensor.db.incoming"
@@ -103,4 +107,4 @@ ssh "$REMOTE" "cd '$APP_DIR' && .venv/bin/python -c '$HEALTH_PY'" 2>&1 | strip_s
 
 echo
 echo "Done. Dashboard: http://${REMOTE#*@}:8787"
-echo "Pre-restore snapshot kept on the target as sensor.db*.pre-restore-$STAMP (delete when happy)."
+echo "Pre-restore snapshot kept on the target as sensor.db.pre-restore-$STAMP (delete when happy)."

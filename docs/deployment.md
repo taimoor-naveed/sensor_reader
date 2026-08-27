@@ -89,7 +89,7 @@ deploy/restore-db.sh --replace              # overwrite the target DB instead of
 ```
 
 Sequence: verify the backup locally (`PRAGMA integrity_check` + row counts) → stop the
-service → snapshot the target's current `sensor.db*` as `sensor.db*.pre-restore-<stamp>` →
+service → snapshot the target's current database as `sensor.db.pre-restore-<stamp>` →
 upload → merge (or replace) → start the service → print the resulting data extent via
 `/api/history?range=all`.
 
@@ -100,6 +100,12 @@ afterwards without losing either side.
 
 With `--replace`, the stale `sensor.db-wal` / `sensor.db-shm` are deleted along with the old
 database — SQLite must never find a WAL belonging to a different database file.
+
+The pre-restore snapshot is written with SQLite's backup API rather than `cp`, because the
+live database runs in WAL mode: a plain copy of `sensor.db` can be nearly empty with the real
+content still sitting in the `-wal` sidecar. The snapshot is a single self-contained file, so
+rolling back is just `mv sensor.db.pre-restore-<stamp> sensor.db` (with the service stopped
+and any `sensor.db-wal`/`-shm` removed).
 
 > **Gap in the data:** the backup ends at the moment the snapshot was taken on the old
 > machine. Everything between that and the first reading on Ubuntu is simply missing — the

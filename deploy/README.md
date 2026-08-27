@@ -46,7 +46,8 @@ No `git` is needed on the target — transfer is `tar` + `scp` over SSH.
   there are never clobbered by a push.
 - `restore-db.sh` **merges** by default (`INSERT OR IGNORE` on the timestamp primary keys):
   it never drops rows the target already has, and re-running it is a no-op. It also keeps a
-  `sensor.db*.pre-restore-<stamp>` snapshot on the target. `--replace` swaps the file instead.
+  `sensor.db.pre-restore-<stamp>` snapshot on the target (written with SQLite's backup API,
+  so it is self-contained despite WAL mode). `--replace` swaps the file instead.
 
 ## Autostart & runtime
 
